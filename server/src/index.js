@@ -8,24 +8,30 @@ import { randomUUID, randomBytes } from "node:crypto";
 const CLIENT = /^http:\/\/localhost:\d+$/;
 const app = express();
 app.use(cors({ origin: CLIENT }));
-app.get("/health", (req, res) => res.json({ ok: true }));
+
+// liveness check
+app.get("/health", (req, res) =>
+{
+  res.json({ ok: true });
+});
 
 const players = new Map(); // playerId -> { id, name, token }
 
 const httpServer = createServer(app);
-const io = new Server(httpServer, { 
-  cors: { origin: CLIENT } });
+const io = new Server(httpServer, { cors: { origin: CLIENT } });
 
 const dimensions = 3;
 
 const playerSlots = Array(2).fill(null);
 let currentMove = 0;
 
-let board = Array(dimensions).fill(Array(dimensions).fill(null));
+let board = Array.from({ length: dimensions }, () => new Array(dimensions).fill(null));;
 
 app.use(express.json());
 
-app.post("/players", (req, res) => {
+// registers a new player and returns its id, name and secret token
+app.post("/players", (req, res) =>
+{
   const player = {
     id: randomUUID(),
     name: String(req.body?.name ?? "Guest").slice(0, 20),
@@ -36,15 +42,21 @@ app.post("/players", (req, res) => {
 });
 
 // reject sockets whose handshake doesn't match a registered player
-io.use((socket, next) => {
+io.use((socket, next) =>
+{
   const { id, token } = socket.handshake.auth ?? {};
   const player = players.get(id);
-  if (!player || player.token !== token) return next(new Error("unauthorized"));
+  if (!player || player.token !== token)
+  {
+    return next(new Error("unauthorized"));
+  }
   socket.data.player = player;
   next();
 });
 
-io.on("connection", (socket) => {
+// per-connection setup: greet, send current state, claim a player slot, wire move handling
+io.on("connection", (socket) =>
+{
   const { id, name } = socket.data.player;
 
   console.log("connected:", socket.id, name, id);
@@ -53,9 +65,10 @@ io.on("connection", (socket) => {
 
   ClaimFirstSlot();
 
+  // accepts the submitted board if it is this player's turn
   socket.on("pickSquare", (squares, point) =>
   {
-    if(ValidateMove())
+    if (ValidateMove())
     {
       board = squares;
       currentMove++;
@@ -67,30 +80,33 @@ io.on("connection", (socket) => {
     }
   });
 
+  // log disconnects
+  socket.on("disconnect", () =>
+  {
+    console.log(`disconnected: ${socket.id}`);
+  });
 
-
-
-  socket.on("disconnect", () => console.log("disconnected:", socket.id));
-
+  // gives this player the first free slot, unless it already holds one
   function ClaimFirstSlot()
   {
     // reconnecting player already owns a slot -> keep it, don't take another
-    if(playerSlots.includes(socket.data.player.token))
+    if (playerSlots.includes(socket.data.player.token))
     {
       return;
     }
-    for(let i = 0; i < playerSlots.length; i++)
+    for (let i = 0; i < playerSlots.length; i++)
     {
-      if(TryClaimSlot(i))
+      if (TryClaimSlot(i))
       {
         return;
       }
     }
   }
 
+  // claims slotIndex for this player if it is empty; returns whether it succeeded
   function TryClaimSlot(slotIndex)
   {
-    if(playerSlots[slotIndex] != null)
+    if (playerSlots[slotIndex] !== null)
     {
       return false;
     }
@@ -98,17 +114,19 @@ io.on("connection", (socket) => {
     return true;
   }
 
+  // true if this player owns the slot whose turn it is
   function ValidateMove()
   {
     const nextPlayer = currentMove % 2;
-    if(playerSlots[nextPlayer] != socket.data.player.token)
+    if (playerSlots[nextPlayer] !== socket.data.player.token)
     {
-      console.log("rejected move, reason: requesting player is " + socket.data.player.token + " and only " + playerSlots[nextPlayer] + " can move now")
+      console.log(`rejected move, reason: requesting player is ${socket.data.player.token} and only ${playerSlots[nextPlayer]} can move now`);
       return false;
     }
     return true;
   }
 
+  // broadcasts the new turn and board to every client
   function TurnUpdated()
   {
     io.emit("gameState", currentMove, board);
@@ -117,4 +135,8 @@ io.on("connection", (socket) => {
 });
 
 
-httpServer.listen(3001, () => console.log("Server on :3001"))
+// start listening
+httpServer.listen(3001, () =>
+{
+  console.log("Server on :3001");
+});
