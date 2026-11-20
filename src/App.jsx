@@ -6,23 +6,122 @@ import Square from "./Square";
 
 import { io } from "socket.io-client";
 
-const socket = io("http://localhost:3001");
+const SERVER = "http://localhost:3001";
+const STORAGE_KEY = "player";
+
+// don't connect until we have credentials from POST /players
+const socket = io(SERVER, { autoConnect: false });
+
+// shared promise so StrictMode's double effect doesn't register twice
+let playerPromise = null;
+
+function getPlayer() {
+  if (!playerPromise) {
+    playerPromise = (async () => {
+      const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? "null");
+      if (saved) return saved;
+
+      const res = await fetch(`${SERVER}/players`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "player" }),
+      });
+      if (!res.ok) throw new Error(`register failed: ${res.status}`);
+      const me = await res.json();
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(me));
+      return me;
+    })();
+    playerPromise.catch(() => { playerPromise = null; });
+  }
+  return playerPromise;
+}
+
+function forgetPlayer() {
+  sessionStorage.removeItem(STORAGE_KEY);
+  playerPromise = null;
+}
 
 export default function App() {
-  const [messages, setMessages] = useState([]);
+  const [player, setPlayer] = useState(null);
+  const [currentMove, setCurrentMove] = useState(0);
+  const [currentSquares, setSquares] = useState(Array(3).fill(Array(3).fill(null)));
+  const xIsNext = currentMove % 2 === 0;
 
+  const connectionName = player ? `${player.name}:${player.id}` : "connecting...";
+
+  // register (or reuse saved identity), then open the socket
   useEffect(() => {
-    socket.on("message", (msg) => setMessages((m) => [...m, msg]));
-    return () => socket.off("message");
+    let cancelled = false;
+
+    async function connect() {
+      const me = await getPlayer();
+      if (cancelled) return;
+      setPlayer(me);
+      socket.auth = { id: me.id, token: me.token };
+      socket.connect();
+    }
+
+    // saved identity rejected (e.g. server restarted) -> register again
+    function onConnectError(err) {
+      console.log("connect_error:", err.message);
+      if (err.message === "unauthorized") {
+        forgetPlayer();
+        connect().catch(console.error);
+      }
+    }
+
+    function onWelcome(me) {
+      setPlayer((prev) => ({ ...prev, ...me }));
+    }
+
+    socket.on("connect_error", onConnectError);
+    socket.on("welcome", onWelcome);
+    connect().catch(console.error);
+
+    return () => {
+      cancelled = true;
+      socket.off("connect_error", onConnectError);
+      socket.off("welcome", onWelcome);
+      socket.disconnect();
+    };
+  }, []);
+
+  // recieve current move from server
+  useEffect(() => {
+    function onGameState(turn, squares) {
+      setCurrentMove(turn);
+      setSquares(squares);
+      console.log("recieved gamestate turn", socket.id);
+    }
+    socket.on("gameState", onGameState);
+    return () => socket.off("gameState", onGameState);
   }, []);
 
   return (
-    <div>
-      <button onClick={() => socket.emit("hello", "Player")}>Say hi</button>
-      <ul>{messages.map((m, i) => <li key={i}>{m}</li>)}</ul>
-    </div>
+    <>
+      {connectionName}
+      <div className="game">
+        <div> 
+        </div>
+        I am turn on turn: {currentMove}
+        <div className="game-board">
+          <Board
+            squares={currentSquares}
+            xIsNext={xIsNext}
+            onPlay={handlePlay}
+          />
+        </div>
+        </div>
+    </>
   );
+
+  
+  function handlePlay(nextSquares, point) {
+    socket.emit("pickSquare", nextSquares, point)
+    //setCurrentMove(nextHistory.length - 1);
+  }
 }
+
 
 
 function Game() {
@@ -105,7 +204,7 @@ function Game() {
       { contents: nextSquares, selection: point },
     ];
     setHistory(nextHistory);
-    setCurrentMove(nextHistory.length - 1);
+    //setCurrentMove(nextHistory.length - 1);
   }
 }
 
