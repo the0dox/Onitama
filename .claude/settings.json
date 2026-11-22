@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "enpitech-ai-tools@anthropic-plugin-directory": true
+  }
+}
