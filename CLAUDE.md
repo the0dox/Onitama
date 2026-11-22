@@ -67,7 +67,7 @@ To play both sides locally, run the server and open the client in two browser ta
 8. if the game is not over the turn passes to the next player
 
 **Socket events**:
-- server → client: `welcome(player)`, `gameState(currentMove, board)` (sent on connect and broadcast after each accepted move)
+- server → client: `welcome(player)`, `gameState(cardState, currentMove, board)` (sent on connect and broadcast after each accepted move)
 - client → server: `pickMove(startingLocation, card, move)`. The client sends the location of the piece it wants to move, the card they selected, and the move within the card they want to use. The server checks if it the players turn (`currentMove % 2` against the slot token), It then applies the move according to game play turn structure rules 5-8 it the server then broadcasts the new gamestate to all players.
 
 **Shared game logic** (`shared/`, importable by client and server; pure functions, no mutation):

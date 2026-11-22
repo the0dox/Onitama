@@ -1,8 +1,7 @@
 import { HashSeed, CreateRng } from "./random.js";
 import { CardsByName } from "./cards.js";
 
-// TODO(server wiring): read DECK_SEED from the environment; if unset, generate a random seed
-// and log it so the game can be reproduced. These functions only ever receive the seed.
+// these functions only ever receive the seed; server/src/seed.js resolves it from DECK_SEED
 
 // returns a new array with the cards in a seed-determined order (Fisher-Yates)
 export function ShuffleDeck(cards, seedString)

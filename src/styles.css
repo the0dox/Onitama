@@ -100,3 +100,93 @@ body {
 .p2 {
   color: blue;
 }
+
+/* layout: red hand above, board + neutral card in the middle, blue hand below */
+.game-column {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.game {
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.card-hand {
+  border: 2px solid transparent;
+  border-radius: 6px;
+  padding: 6px;
+}
+
+.card-hand--active {
+  border-color: #333;
+  background: #f6f6f6;
+}
+
+.card-hand-title {
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.card-hand-red .card-hand-title {
+  color: red;
+}
+
+.card-hand-blue .card-hand-title {
+  color: blue;
+}
+
+.card-hand-cards {
+  display: flex;
+  gap: 8px;
+}
+
+.card {
+  border: 2px solid #999;
+  border-radius: 4px;
+  padding: 4px;
+  background: #fff;
+}
+
+.card-red {
+  border-color: red;
+}
+
+.card-blue {
+  border-color: blue;
+}
+
+.card-name {
+  font-size: 12px;
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 12px);
+  grid-template-rows: repeat(5, 12px);
+  gap: 1px;
+}
+
+.card-cell {
+  background: #eee;
+}
+
+.card-cell--origin {
+  background: #333;
+}
+
+.card-cell--target {
+  background: #8c8;
+}
+
+.piece-red {
+  color: red;
+}
+
+.piece-blue {
+  color: blue;
+}

@@ -1,7 +1,11 @@
 import { useState, useEffect } from "react";
 
 import Square from "./Square";
+import { CardHand, CardView } from "./CardHand";
+import { CARDS, CardsByName } from "../shared/game/cards.js";
 
+// resolves the card names sent by the server into full card definitions
+const BY_NAME = CardsByName(CARDS);
 
 import { io } from "socket.io-client";
 
@@ -61,8 +65,9 @@ export default function App()
 {
   const [player, setPlayer] = useState(null);
   const [currentMove, setCurrentMove] = useState(0);
-  const [currentSquares, setSquares] = useState(Array(3).fill(Array(3).fill(null)));
-  const xIsNext = currentMove % 2 === 0;
+  const [currentSquares, setSquares] = useState(null);
+  const [cardState, setCardState] = useState(null);
+  const status = cardState ? `${cardState.currentPlayer}'s turn` : "";
 
   const connectionName = player ? `${player.name}:${player.id}` : "connecting...";
 
@@ -118,11 +123,12 @@ export default function App()
   // recieve current move from server
   useEffect(() =>
   {
-    // replaces local turn and board with the server's
-    function OnGameState(turn, squares)
+    // replaces local turn, board and card state with the server's
+    function OnGameState(turn, squares, cards)
     {
       setCurrentMove(turn);
       setSquares(squares);
+      setCardState(cards);
       console.log("recieved gamestate turn", socket.id);
     }
     socket.on("gameState", OnGameState);
@@ -132,156 +138,69 @@ export default function App()
   return (
     <>
       {connectionName}
-      <div className="game">
-        <div>
+      <div className="game-column">
+        {RenderHand("red")}
+        <div className="game">
+          I am turn on turn: {currentMove}
+          <div className="game-board">
+            {currentSquares && <Board squares={currentSquares} status={status} />}
+          </div>
+          {RenderNeutral()}
         </div>
-        I am turn on turn: {currentMove}
-        <div className="game-board">
-          <Board
-            squares={currentSquares}
-            xIsNext={xIsNext}
-            onPlay={HandlePlay}
-          />
-        </div>
-        </div>
+        {RenderHand("blue")}
+      </div>
     </>
   );
 
-
-  // sends the proposed next board to the server; the server decides whether it is accepted
-  function HandlePlay(nextSquares, point)
+  // renders a player's hand once the server has sent the card state
+  function RenderHand(side)
   {
-    socket.emit("pickSquare", nextSquares, point);
+    if (!cardState)
+    {
+      return null;
+    }
+    return (
+      <CardHand
+        player={side}
+        cardNames={cardState.hands[side]}
+        byName={BY_NAME}
+        active={cardState.currentPlayer === side}
+      />
+    );
+  }
+
+  // renders the neutral card from the perspective of the player about to move
+  function RenderNeutral()
+  {
+    if (!cardState)
+    {
+      return null;
+    }
+    return (
+      <div className="neutral-zone">
+        <div className="card-hand-title">Neutral</div>
+        <CardView card={BY_NAME.get(cardState.neutral)} player={cardState.currentPlayer} />
+      </div>
+    );
   }
 }
 
-// board is playing the current state.
-// BUT we move the true state outside of this board we can use a history of the game to go back in time
-function Board({ squares, xIsNext, onPlay })
+// the board as sent by the server: squares[x][y] holds a piece letter or null; display only for now
+function Board({ squares, status })
 {
-  const winner = DetermineWinner(squares);
-  let status;
-  if (winner)
-  {
-    status = `winner is ${winner.player}`;
-  }
-  else
-  {
-    status = `It's ${xIsNext ? "X" : "O"}'s turn`;
-  }
-
+  const size = squares.length;
+  const rows = Array.from({ length: size }, (_, y) => y);
+  const columns = Array.from({ length: size }, (_, x) => x);
   return (
     <>
       <div className="status">{status}</div>
-      {CreateBoard(winner)}
+      {rows.map((y) => (
+        <div className="board-row" key={y}>
+          {columns.map((x) => (
+            <Square key={x} piece={squares[x][y]} />
+          ))}
+        </div>
+      ))}
     </>
   );
-
-  // builds the grid of Square rows, highlighting squares on the winning line
-  function CreateBoard(args)
-  {
-    const columns = [];
-    for (let i = 0; i < squares.length; i++)
-    {
-      const rows = [];
-      for (let j = 0; j < squares[i].length; j++)
-      {
-        const winner = args !== null && args.containsPoint(i, j);
-        rows.push(
-          <Square
-            number={squares[i][j]}
-            onSquareClicked={() => OnSquareClicked(i, j)}
-            winning={winner}
-          />
-        );
-      }
-      columns.push(<div className="board-row">{rows}</div>);
-    }
-    return columns;
-  }
-
-  // places the current player's mark on an empty square and passes the new board up
-  function OnSquareClicked(X, Y)
-  {
-    if (squares[X][Y] !== null || DetermineWinner(squares) !== null)
-    {
-      return;
-    }
-    const nextSquares = squares.slice();
-    nextSquares[X] = squares[X].slice();
-    nextSquares[X][Y] = xIsNext ? "X" : "O";
-    onPlay(nextSquares, { x: X + 1, y: Y + 1 });
-  }
-}
-
-// returns { player, rows, containsPoint } for the first completed line, or null
-function DetermineWinner(squares)
-{
-  const winningPatterns = [
-    [
-      { x: 0, y: 0 },
-      { x: 1, y: 0 },
-      { x: 2, y: 0 },
-    ],
-    [
-      { x: 0, y: 1 },
-      { x: 1, y: 1 },
-      { x: 2, y: 1 },
-    ],
-    [
-      { x: 0, y: 2 },
-      { x: 1, y: 2 },
-      { x: 2, y: 2 },
-    ],
-    [
-      { x: 1, y: 0 },
-      { x: 1, y: 1 },
-      { x: 1, y: 2 },
-    ],
-    [
-      { x: 2, y: 0 },
-      { x: 2, y: 1 },
-      { x: 2, y: 2 },
-    ],
-    [
-      { x: 0, y: 0 },
-      { x: 0, y: 1 },
-      { x: 0, y: 2 },
-    ],
-    [
-      { x: 0, y: 0 },
-      { x: 1, y: 1 },
-      { x: 2, y: 2 },
-    ],
-    [
-      { x: 2, y: 0 },
-      { x: 1, y: 1 },
-      { x: 0, y: 2 },
-    ],
-  ];
-
-  for (let i = 0; i < winningPatterns.length; i++)
-  {
-    const currentLine = winningPatterns[i];
-    if (
-      squares[currentLine[0].x][currentLine[0].y] !== null &&
-      squares[currentLine[1].x][currentLine[1].y] ===
-        squares[currentLine[0].x][currentLine[0].y] &&
-      squares[currentLine[2].x][currentLine[2].y] ===
-        squares[currentLine[0].x][currentLine[0].y]
-    )
-    {
-      return {
-        player: squares[currentLine[0].x][currentLine[0].y],
-        rows: currentLine,
-        // true if (X, Y) lies on this winning line
-        containsPoint: function (X, Y)
-        {
-          return this.rows.some((point) => point.x === X && point.y === Y);
-        },
-      };
-    }
-  }
-
-  return null;
 }

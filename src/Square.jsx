@@ -1,12 +1,23 @@
-// only display the value given from board, contain no state myself anymore
-export default function Square({ number, onSquareClicked, winning }) {
-  let visualClass = "square";
-  if (winning == true) {
-    visualClass += " win";
+// css class for a piece letter: lowercase/uppercase r is red, b is blue, anything else is empty
+function PieceClass(piece)
+{
+  if (piece === "r" || piece === "R")
+  {
+    return "square piece-red";
   }
+  if (piece === "b" || piece === "B")
+  {
+    return "square piece-blue";
+  }
+  return "square";
+}
+
+// one board square: displays the piece letter it is given, holds no state
+export default function Square({ piece })
+{
   return (
-    <button className={visualClass} onClick={onSquareClicked}>
-      {number}
+    <button className={PieceClass(piece)}>
+      {piece}
     </button>
   );
 }

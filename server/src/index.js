@@ -3,6 +3,10 @@ import cors from "cors";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { randomUUID, randomBytes } from "node:crypto";
+import { CARDS } from "../../shared/game/cards.js";
+import { CreateCardState } from "../../shared/game/deck.js";
+import { CreateBoard } from "../../shared/game/board.js";
+import { ResolveDeckSeed } from "./seed.js";
 
 // allow any localhost port (a second Vite dev server lands on 5174, 5175, ...)
 const CLIENT = /^http:\/\/localhost:\d+$/;
@@ -20,12 +24,33 @@ const players = new Map(); // playerId -> { id, name, token }
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: CLIENT } });
 
-const dimensions = 3;
-
+// seats survive restarts; everything below them is per-game state set by RestartGame()
 const playerSlots = Array(2).fill(null);
-let currentMove = 0;
+let currentMove;
+let board;
+let cardState;
+let gamesStarted = 0;
 
-let board = Array.from({ length: dimensions }, () => new Array(dimensions).fill(null));;
+// resets turn, board and cards for a new game; the first game honours DECK_SEED, later ones reshuffle randomly
+function RestartGame()
+{
+  const env = gamesStarted === 0 ? process.env : {};
+  const { seed, source } = ResolveDeckSeed(env, () => randomBytes(8).toString("hex"));
+  console.log(`game ${gamesStarted + 1} deck seed (${source}): ${seed}`);
+
+  currentMove = 0;
+  board = CreateBoard();
+  cardState = CreateCardState(CARDS, seed);
+  gamesStarted++;
+}
+
+// sends the current turn, board and cards to every connected client
+function BroadcastState()
+{
+  io.emit("gameState", currentMove, board, cardState);
+}
+
+RestartGame();
 
 app.use(express.json());
 
@@ -61,7 +86,7 @@ io.on("connection", (socket) =>
 
   console.log("connected:", socket.id, name, id);
   socket.emit("welcome", { id, name });
-  socket.emit("gameState", currentMove, board);
+  socket.emit("gameState", currentMove, board, cardState);
 
   ClaimFirstSlot();
 
@@ -78,6 +103,18 @@ io.on("connection", (socket) =>
     {
       console.log("unable to validate request");
     }
+  });
+
+  // starts a new game; only seated players may restart, spectators are ignored
+  socket.on("restartGame", () =>
+  {
+    if (!playerSlots.includes(socket.data.player.token))
+    {
+      console.log(`rejected restart from spectator ${socket.id}`);
+      return;
+    }
+    RestartGame();
+    BroadcastState();
   });
 
   // log disconnects
@@ -129,7 +166,7 @@ io.on("connection", (socket) =>
   // broadcasts the new turn and board to every client
   function TurnUpdated()
   {
-    io.emit("gameState", currentMove, board);
+    BroadcastState();
     console.log("updated turn", socket.id);
   }
 });
