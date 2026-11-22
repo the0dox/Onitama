@@ -1,22 +1,18 @@
-// css class for a piece letter: lowercase/uppercase r is red, b is blue, anything else is empty
-function PieceClass(piece)
+import { PieceOwner } from "../shared/game/board.js";
+
+// css classes for a square: piece colour plus an optional "target" or "selected" highlight
+function SquareClass(piece, highlight)
 {
-  if (piece === "r" || piece === "R")
-  {
-    return "square piece-red";
-  }
-  if (piece === "b" || piece === "B")
-  {
-    return "square piece-blue";
-  }
-  return "square";
+  const owner = PieceOwner(piece);
+  const classes = ["square", owner ? `piece-${owner}` : "", highlight ? `square--${highlight}` : ""];
+  return classes.filter(Boolean).join(" ");
 }
 
 // one board square: displays the piece letter it is given, holds no state
-export default function Square({ piece })
+export default function Square({ piece, highlight = null, onClick })
 {
   return (
-    <button className={PieceClass(piece)}>
+    <button className={SquareClass(piece, highlight)} onClick={onClick}>
       {piece}
     </button>
   );

@@ -15,9 +15,35 @@ export const GATES = Object.freeze({
   blue: Object.freeze({ x: 2, y: 4 }),
 });
 
+// which side owns a piece letter: "red", "blue", or null for an empty square
+export function PieceOwner(piece)
+{
+
+  if (piece === PIECES.redDisciple || piece === PIECES.redSensei)
+  {
+    return "red";
+  }
+  if (piece === PIECES.blueDisciple || piece === PIECES.blueSensei)
+  {
+    return "blue";
+  }
+  return null;
+}
+
+// true if (x, y) lies on the board; both must be real integers, since values from clients
+// like "0" would otherwise pass the comparisons and then concatenate ("0" + 1 === "01")
+export function OnBoard(x, y)
+{
+  return Number.isInteger(x) && Number.isInteger(y) && x >= 0 && x < BOARD_SIZE && y >= 0 && y < BOARD_SIZE;
+}
+
 // the piece that starts on (x, y): red fills row 0, blue fills row 4, senseis sit on their gate
 export function StartingPiece(x, y)
 {
+  if(!OnBoard(x,y))
+  {
+    return null;
+  }
   if (y === GATES.red.y)
   {
     return x === GATES.red.x ? PIECES.redSensei : PIECES.redDisciple;

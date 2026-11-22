@@ -190,3 +190,21 @@ body {
 .piece-blue {
   color: blue;
 }
+
+/* selection: green move targets, yellow selected piece / card */
+.square--target {
+  background: #8c8;
+  cursor: pointer;
+}
+
+.square--selected {
+  background: #ffd966;
+}
+
+.card--clickable {
+  cursor: pointer;
+}
+
+.card--selected {
+  box-shadow: 0 0 0 3px #ffd966;
+}

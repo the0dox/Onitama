@@ -3,6 +3,9 @@ import { useState, useEffect } from "react";
 import Square from "./Square";
 import { CardHand, CardView } from "./CardHand";
 import { CARDS, CardsByName } from "../shared/game/cards.js";
+import { PieceOwner } from "../shared/game/board.js";
+import { ValidTargets } from "../shared/game/moves.js";
+import { EMPTY_SELECTION, ToggleCard, TogglePiece } from "./selection.js";
 
 // resolves the card names sent by the server into full card definitions
 const BY_NAME = CardsByName(CARDS);
@@ -67,7 +70,16 @@ export default function App()
   const [currentMove, setCurrentMove] = useState(0);
   const [currentSquares, setSquares] = useState(null);
   const [cardState, setCardState] = useState(null);
+  const [selection, setSelection] = useState(EMPTY_SELECTION);
   const status = cardState ? `${cardState.currentPlayer}'s turn` : "";
+
+  // only the seated player whose turn it is may select anything
+  const myColor = player?.color ?? null;
+  const canAct = myColor !== null && cardState !== null && cardState.currentPlayer === myColor;
+  // green squares appear only once both a piece and a card are chosen
+  const targets = canAct && selection.piece && selection.card
+    ? ValidTargets(currentSquares, selection.piece, BY_NAME.get(selection.card), myColor)
+    : [];
 
   const connectionName = player ? `${player.name}:${player.id}` : "connecting...";
 
@@ -123,12 +135,13 @@ export default function App()
   // recieve current move from server
   useEffect(() =>
   {
-    // replaces local turn, board and card state with the server's
-    function OnGameState(turn, squares, cards)
+    // replaces local card state, turn and board with the server's; any in-progress selection is stale
+    function OnGameState(cards, turn, squares)
     {
+      setCardState(cards);
       setCurrentMove(turn);
       setSquares(squares);
-      setCardState(cards);
+      setSelection(EMPTY_SELECTION);
       console.log("recieved gamestate turn", socket.id);
     }
     socket.on("gameState", OnGameState);
@@ -143,7 +156,15 @@ export default function App()
         <div className="game">
           I am turn on turn: {currentMove}
           <div className="game-board">
-            {currentSquares && <Board squares={currentSquares} status={status} />}
+            {currentSquares && (
+              <Board
+                squares={currentSquares}
+                status={status}
+                targets={targets}
+                selectedPiece={selection.piece}
+                onSquareClick={OnSquareClick}
+              />
+            )}
           </div>
           {RenderNeutral()}
         </div>
@@ -165,8 +186,40 @@ export default function App()
         cardNames={cardState.hands[side]}
         byName={BY_NAME}
         active={cardState.currentPlayer === side}
+        selectedCard={side === myColor ? selection.card : null}
+        onCardClick={side === myColor ? OnCardClick : undefined}
       />
     );
+  }
+
+  // a target square sends the move; one of my pieces toggles the piece selection; anything else is ignored
+  function OnSquareClick(x, y)
+  {
+    if (!canAct)
+    {
+      return;
+    }
+    const target = targets.find((t) => t.x === x && t.y === y);
+    if (target)
+    {
+      socket.emit("pickMove", selection.piece, selection.card, target.moveIndex);
+      setSelection(EMPTY_SELECTION);
+      return;
+    }
+    if (PieceOwner(currentSquares[x][y]) === myColor)
+    {
+      setSelection((prev) => TogglePiece(prev, { x, y }));
+    }
+  }
+
+  // toggles the card selection in my own hand
+  function OnCardClick(cardName)
+  {
+    if (!canAct)
+    {
+      return;
+    }
+    setSelection((prev) => ToggleCard(prev, cardName));
   }
 
   // renders the neutral card from the perspective of the player about to move
@@ -185,8 +238,22 @@ export default function App()
   }
 }
 
-// the board as sent by the server: squares[x][y] holds a piece letter or null; display only for now
-function Board({ squares, status })
+// the highlight for (x, y): green target, selected piece, or none
+function HighlightAt(x, y, targets, selectedPiece)
+{
+  if (targets.some((t) => t.x === x && t.y === y))
+  {
+    return "target";
+  }
+  if (selectedPiece && selectedPiece.x === x && selectedPiece.y === y)
+  {
+    return "selected";
+  }
+  return null;
+}
+
+// the board as sent by the server: squares[x][y] holds a piece letter or null
+function Board({ squares, status, targets, selectedPiece, onSquareClick })
 {
   const size = squares.length;
   const rows = Array.from({ length: size }, (_, y) => y);
@@ -197,7 +264,12 @@ function Board({ squares, status })
       {rows.map((y) => (
         <div className="board-row" key={y}>
           {columns.map((x) => (
-            <Square key={x} piece={squares[x][y]} />
+            <Square
+              key={x}
+              piece={squares[x][y]}
+              highlight={HighlightAt(x, y, targets, selectedPiece)}
+              onClick={() => onSquareClick(x, y)}
+            />
           ))}
         </div>
       ))}

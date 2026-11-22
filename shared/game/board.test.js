@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { BOARD_SIZE, CreateBoard, StartingPiece } from "./board.js";
+import { BOARD_SIZE, CreateBoard, StartingPiece, PieceOwner, OnBoard } from "./board.js";
 
 // returns the pieces along row y, reading x from left to right
 function Row(board, y)
@@ -52,5 +52,40 @@ describe("StartingPiece", () =>
   it("returns null for the middle of the board", () =>
   {
     expect(StartingPiece(2, 2)).toBeNull();
+  });
+});
+
+describe("PieceOwner", () =>
+{
+  it("maps disciples and senseis to their side", () =>
+  {
+    expect(PieceOwner("r")).toBe("red");
+    expect(PieceOwner("R")).toBe("red");
+    expect(PieceOwner("b")).toBe("blue");
+    expect(PieceOwner("B")).toBe("blue");
+  });
+
+  it("returns null for an empty square", () =>
+  {
+    expect(PieceOwner(null)).toBeNull();
+  });
+});
+
+// Game play rule 6: pieces cannot move off the board
+describe("OnBoard", () =>
+{
+  it("accepts the four corners", () =>
+  {
+    [[0, 0], [4, 0], [0, 4], [4, 4]].forEach(([x, y]) => expect(OnBoard(x, y)).toBe(true));
+  });
+
+  it("rejects one step past each edge", () =>
+  {
+    [[-1, 2], [5, 2], [2, -1], [2, 5]].forEach(([x, y]) => expect(OnBoard(x, y)).toBe(false));
+  });
+
+  it("rejects non-integer coordinates such as strings from a client", () =>
+  {
+    [["0", "0"], [1.5, 2], [undefined, 0], [null, null], [NaN, 1]].forEach(([x, y]) => expect(OnBoard(x, y)).toBe(false));
   });
 });

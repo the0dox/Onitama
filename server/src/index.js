@@ -3,10 +3,16 @@ import cors from "cors";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { randomUUID, randomBytes } from "node:crypto";
-import { CARDS } from "../../shared/game/cards.js";
+import { CARDS, CardsByName } from "../../shared/game/cards.js";
 import { CreateCardState } from "../../shared/game/deck.js";
 import { CreateBoard } from "../../shared/game/board.js";
+import { CheckMove } from "../../shared/game/moves.js";
 import { ResolveDeckSeed } from "./seed.js";
+
+// resolves card names sent by clients into card definitions
+const CARDS_BY_NAME = CardsByName(CARDS);
+// slot index -> colour: the first seated player is red, the second blue
+const SEAT_COLORS = ["red", "blue"];
 
 // allow any localhost port (a second Vite dev server lands on 5174, 5175, ...)
 const CLIENT = /^http:\/\/localhost:\d+$/;
@@ -47,7 +53,7 @@ function RestartGame()
 // sends the current turn, board and cards to every connected client
 function BroadcastState()
 {
-  io.emit("gameState", currentMove, board, cardState);
+  io.emit("gameState", cardState, currentMove, board);
 }
 
 RestartGame();
@@ -85,24 +91,29 @@ io.on("connection", (socket) =>
   const { id, name } = socket.data.player;
 
   console.log("connected:", socket.id, name, id);
-  socket.emit("welcome", { id, name });
-  socket.emit("gameState", currentMove, board, cardState);
-
+  // claim first so welcome can tell the client which colour it plays
   ClaimFirstSlot();
+  socket.emit("welcome", { id, name, color: SeatColor() });
+  socket.emit("gameState", cardState, currentMove, board);
 
-  // accepts the submitted board if it is this player's turn
-  socket.on("pickSquare", (squares, point) =>
+  // logs the requested move; applying it (turn structure 5-8) comes later
+  socket.on("pickMove", (start, cardName, moveIndex) =>
   {
-    if (ValidateMove())
+    const color = SeatColor();
+    // every value from the client is checked before anything indexes the board with it
+    const check = CheckMove(board, cardState.currentPlayer, color, start, cardName, moveIndex, CARDS_BY_NAME);
+    if (!check.ok)
     {
-      board = squares;
-      currentMove++;
-      TurnUpdated();
+      console.log(`pickMove from ${color}: rejected (${check.reason}) ${RejectDetail(check.reason)}`);
+      return;
     }
-    else
-    {
-      console.log("unable to validate request");
-    }
+    const target = check.target;
+
+    console.log(`pickMove from ${color}: piece (${start.x},${start.y}) card ${cardName}[${moveIndex}] -> (${target.x},${target.y})`);
+  
+    board[target.x][target.y] = board[start.x][start.y];
+    board[start.x][start.y] = null
+    BroadcastState();
   });
 
   // starts a new game; only seated players may restart, spectators are ignored
@@ -122,6 +133,12 @@ io.on("connection", (socket) =>
   {
     console.log(`disconnected: ${socket.id}`);
   });
+
+  // this player's colour from their seat, or null for a spectator
+  function SeatColor()
+  {
+    return SEAT_COLORS[playerSlots.indexOf(socket.data.player.token)] ?? null;
+  }
 
   // gives this player the first free slot, unless it already holds one
   function ClaimFirstSlot()
@@ -151,23 +168,16 @@ io.on("connection", (socket) =>
     return true;
   }
 
-  // true if this player owns the slot whose turn it is
-  function ValidateMove()
+  // human-readable detail for a CheckMove rejection reason, for the server log
+  function RejectDetail(reason)
   {
-    const nextPlayer = currentMove % 2;
-    if (playerSlots[nextPlayer] !== socket.data.player.token)
-    {
-      console.log(`rejected move, reason: requesting player is ${socket.data.player.token} and only ${playerSlots[nextPlayer]} can move now`);
-      return false;
-    }
-    return true;
-  }
-
-  // broadcasts the new turn and board to every client
-  function TurnUpdated()
-  {
-    BroadcastState();
-    console.log("updated turn", socket.id);
+    const details = {
+      "not-your-turn": `requesting player is ${SeatColor()} and only ${cardState.currentPlayer} can move now`,
+      "no-piece": "start is off the board or not one of the sender's pieces",
+      "bad-move": "unknown card or move index",
+      "bad-target": "target is off the board or holds the sender's own piece",
+    };
+    return details[reason] ?? "";
   }
 });
 
