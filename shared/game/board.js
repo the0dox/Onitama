@@ -1,3 +1,7 @@
+import { createContext } from "react";
+
+export let ButtonContext = createContext(null);
+
 // the board is BOARD_SIZE x BOARD_SIZE, indexed board[x][y] with (0,0) top-left and +y pointing down
 export const BOARD_SIZE = 5;
 

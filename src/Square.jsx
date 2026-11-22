@@ -1,4 +1,5 @@
-import { PieceOwner } from "../shared/game/board.js";
+import { useContext } from "react";
+import { ButtonContext, PieceOwner } from "../shared/game/board.js";
 
 // css classes for a square: piece colour plus an optional "target" or "selected" highlight
 function SquareClass(piece, highlight)
@@ -9,10 +10,11 @@ function SquareClass(piece, highlight)
 }
 
 // one board square: displays the piece letter it is given, holds no state
-export default function Square({ piece, highlight = null, onClick })
+export default function Square({ piece, highlight = null, point })
 {
+  const onPress = useContext(ButtonContext);
   return (
-    <button className={SquareClass(piece, highlight)} onClick={onClick}>
+    <button className={SquareClass(piece, highlight)} onClick={() => onPress(point.x, point.y)}>
       {piece}
     </button>
   );

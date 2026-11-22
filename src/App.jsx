@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect} from "react";
 
 import Square from "./Square";
 import { CardHand, CardView } from "./CardHand";
 import { CARDS, CardsByName } from "../shared/game/cards.js";
-import { PieceOwner } from "../shared/game/board.js";
+import { PieceOwner, ButtonContext } from "../shared/game/board.js";
 import { ValidTargets } from "../shared/game/moves.js";
 import { EMPTY_SELECTION, ToggleCard, TogglePiece } from "./selection.js";
 
@@ -149,7 +149,7 @@ export default function App()
   }, []);
 
   return (
-    <>
+    <ButtonContext value={OnSquareClick}>
       {connectionName}
       <div className="game-column">
         {RenderHand("red")}
@@ -162,7 +162,6 @@ export default function App()
                 status={status}
                 targets={targets}
                 selectedPiece={selection.piece}
-                onSquareClick={OnSquareClick}
               />
             )}
           </div>
@@ -170,7 +169,7 @@ export default function App()
         </div>
         {RenderHand("blue")}
       </div>
-    </>
+    </ButtonContext>
   );
 
   // renders a player's hand once the server has sent the card state
@@ -195,6 +194,7 @@ export default function App()
   // a target square sends the move; one of my pieces toggles the piece selection; anything else is ignored
   function OnSquareClick(x, y)
   {
+    console.log("on square clicked");
     if (!canAct)
     {
       return;
@@ -253,7 +253,7 @@ function HighlightAt(x, y, targets, selectedPiece)
 }
 
 // the board as sent by the server: squares[x][y] holds a piece letter or null
-function Board({ squares, status, targets, selectedPiece, onSquareClick })
+function Board({ squares, status, targets, selectedPiece})
 {
   const size = squares.length;
   const rows = Array.from({ length: size }, (_, y) => y);
@@ -268,7 +268,7 @@ function Board({ squares, status, targets, selectedPiece, onSquareClick })
               key={x}
               piece={squares[x][y]}
               highlight={HighlightAt(x, y, targets, selectedPiece)}
-              onClick={() => onSquareClick(x, y)}
+              point={{x: x, y: y}}
             />
           ))}
         </div>
