@@ -1,13 +1,23 @@
 // colours a spectator can pick, in display order
 const COLORS = ["red", "blue"];
 
-// lets a spectator pick a free side; renders nothing once seated or before the server sent seats
+// lets a spectator pick a free side, or a seated player leave their seat;
+// renders nothing before the server sent seats
 // seats: { red: taken, blue: taken, mine: colour | null }
-export default function SeatPicker({ seats, onPick })
+export default function SeatPicker({ seats, onPick, onLeave })
 {
-  if (!seats || seats.mine)
+  if (!seats)
   {
     return null;
+  }
+  if (seats.mine)
+  {
+    return (
+      <div className="seat-picker">
+        <span className={`seat-button-${seats.mine}`}>{`Playing ${seats.mine}`}</span>
+        <button className="seat-button" onClick={onLeave}>Leave seat</button>
+      </div>
+    );
   }
   return (
     <div className="seat-picker">

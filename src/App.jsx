@@ -4,7 +4,7 @@ import Square from "./Square";
 import { CardHand, CardView } from "./CardHand";
 import { CARDS, CardsByName } from "../shared/game/cards.js";
 import { PieceOwner } from "../shared/game/board.js";
-import { ButtonContext } from "./BoardContext.jsx"
+import { ButtonContext } from "./BoardContext.jsx";
 import { ValidTargets } from "../shared/game/moves.js";
 import { EMPTY_SELECTION, ToggleCard, TogglePiece } from "./selection.js";
 import SeatPicker from "./SeatPicker.jsx";
@@ -158,8 +158,12 @@ export default function App()
 
   return (
     <ButtonContext value={OnSquareClick}>
-      <RenderHeader/>
-      <SeatPicker seats={seats} onPick={(color) => socket.emit("pickSeat", color)} />
+      <RenderHeader player={player} myColor={myColor}/>
+      <SeatPicker
+        seats={seats}
+        onPick={(color) => socket.emit("pickSeat", color)}
+        onLeave={() => socket.emit("leaveSeat")}
+      />
       <div className="game-column">
         {RenderHand("red")}
         <div className="game">
@@ -246,26 +250,6 @@ export default function App()
       </div>
     );
   }
-
-  function RenderHeader()
-  {
-    const connectionName = player ? `${player.name}:${player.id}` : "connecting...";
-    let displayClass;
-    switch(myColor)
-    {
-      case "red":
-        displayClass = "p1"
-      break;
-      case "blue":
-        displayClass = "p2"
-      break;
-    }
-    return(
-    <div className={displayClass}>
-      {connectionName}
-    </div>
-    );
-  }  
 }
 
 // the highlight for (x, y): green target, selected piece, or none
@@ -306,3 +290,16 @@ function Board({ squares, status, targets, selectedPiece})
     </>
   );
 }
+
+
+
+function RenderHeader({player, myColor})
+{
+  const connectionName = player ? `${player.name}:${player.id}` : "connecting...";
+  let displayClass = ({ red: "p1", blue: "p2" })[myColor];
+  return(
+  <div className={displayClass}>
+    {connectionName}
+  </div>
+  );
+}  

@@ -1,5 +1,42 @@
 import { describe, it, expect } from "vitest";
-import { EMPTY_SEATS, SeatOf, ClaimSeat, ReleaseSeat, SeatsView } from "./seats.js";
+import { EMPTY_SEATS, SeatOf, ClaimSeat, ReleaseSeat, LeaveSeat, ShouldReleaseSeat, SeatsView } from "./seats.js";
+
+describe("LeaveSeat", () =>
+{
+  it("frees the leaving player's seat", () =>
+  {
+    expect(LeaveSeat(["a", "b"], "a")).toEqual({ ok: true, seats: [null, "b"] });
+  });
+
+  it("rejects a spectator", () =>
+  {
+    expect(LeaveSeat(["a", null], "c")).toEqual({ ok: false, reason: "not-seated" });
+  });
+
+  it("lets the player claim the other side afterwards", () =>
+  {
+    const left = LeaveSeat(["a", null], "a");
+    expect(ClaimSeat(left.seats, "blue", "a")).toEqual({ ok: true, seats: [null, "a"] });
+  });
+});
+
+describe("ShouldReleaseSeat", () =>
+{
+  it("releases a seated token with no sockets left", () =>
+  {
+    expect(ShouldReleaseSeat(["a", null], "a", ["c"])).toBe(true);
+  });
+
+  it("keeps the seat while another socket (e.g. a duplicated tab) is still connected", () =>
+  {
+    expect(ShouldReleaseSeat(["a", null], "a", ["a", "c"])).toBe(false);
+  });
+
+  it("ignores spectators", () =>
+  {
+    expect(ShouldReleaseSeat(["a", null], "c", [])).toBe(false);
+  });
+});
 
 describe("SeatOf", () =>
 {

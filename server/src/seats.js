@@ -39,6 +39,23 @@ export function ReleaseSeat(seats, token)
   return seats.map((held) => (held === token ? null : held));
 }
 
+// voluntarily gives up token's seat; returns { ok: true, seats } or { ok: false, reason: "not-seated" }
+export function LeaveSeat(seats, token)
+{
+  if (SeatOf(seats, token) === null)
+  {
+    return { ok: false, reason: "not-seated" };
+  }
+  return { ok: true, seats: ReleaseSeat(seats, token) };
+}
+
+// whether a disconnect should start the seat-release grace timer: token is seated and none of
+// its sockets remain in connectedTokens (the tokens of every socket still connected)
+export function ShouldReleaseSeat(seats, token, connectedTokens)
+{
+  return SeatOf(seats, token) !== null && !connectedTokens.includes(token);
+}
+
 // what one client may see: which seats are taken and its own colour, never any token
 export function SeatsView(seats, token)
 {

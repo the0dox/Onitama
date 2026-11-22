@@ -29,10 +29,19 @@ describe("SeatPicker", () =>
     expect(onPick).toHaveBeenCalledWith("blue");
   });
 
-  it("renders nothing once seated", () =>
+  it("shows the seated colour and a leave button instead of the pick buttons", () =>
   {
-    const { container } = render(<SeatPicker seats={{ red: true, blue: false, mine: "red" }} onPick={() => {}} />);
-    expect(container.innerHTML).toBe("");
+    render(<SeatPicker seats={{ red: true, blue: false, mine: "red" }} onPick={() => {}} onLeave={() => {}} />);
+    expect(screen.getByText("Playing red")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Play blue" })).toBeNull();
+  });
+
+  it("reports leaving the seat", () =>
+  {
+    const onLeave = vi.fn();
+    render(<SeatPicker seats={{ red: false, blue: true, mine: "blue" }} onPick={() => {}} onLeave={onLeave} />);
+    fireEvent.click(screen.getByRole("button", { name: "Leave seat" }));
+    expect(onLeave).toHaveBeenCalledOnce();
   });
 
   it("renders nothing before the server sent seats", () =>

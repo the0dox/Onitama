@@ -9,12 +9,14 @@ import { CreateBoard } from "../../shared/game/board.js";
 import { CheckMove } from "../../shared/game/moves.js";
 import { ApplyMove } from "../../shared/game/turn.js";
 import { ResolveDeckSeed } from "./seed.js";
-import { EMPTY_SEATS, SeatOf, ClaimSeat, ReleaseSeat, SeatsView } from "./seats.js";
+import { EMPTY_SEATS, SeatOf, ClaimSeat, ReleaseSeat, LeaveSeat, ShouldReleaseSeat, SeatsView } from "./seats.js";
+import { CreateReleaseTimers } from "./releaseTimers.js";
 
 // resolves card names sent by clients into card definitions
 const CARDS_BY_NAME = CardsByName(CARDS);
-// how long a disconnected player keeps their seat, so a page refresh doesn't lose it
-const SEAT_GRACE_MS = 5000;
+// how long a disconnected player keeps their seat; longer than the socket.io client's
+// reconnect backoff (1 s, 2 s, 4 s, 5 s... with ±50% jitter) so a brief network drop doesn't lose it
+const SEAT_GRACE_MS = 15000;
 
 // allow any localhost port (a second Vite dev server lands on 5174, 5175, ...)
 const CLIENT = /^http:\/\/localhost:\d+$/;
@@ -32,9 +34,15 @@ const players = new Map(); // playerId -> { id, name, token }
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: CLIENT } });
 
-// seats survive restarts; everything below them is per-game state set by RestartGame()
+// seats survive rematches; everything below them is per-game state set by RestartGame()
 let seats = EMPTY_SEATS; // [redToken | null, blueToken | null]; tokens never leave the server
-const releaseTimers = new Map(); // token -> pending seat release after a disconnect
+// pending seat releases after a disconnect; expiring frees the seat and tells everyone
+const releaseTimers = CreateReleaseTimers(SEAT_GRACE_MS, (token) =>
+{
+  console.log(`seat ${SeatOf(seats, token)} released: token did not reconnect within ${SEAT_GRACE_MS} ms`);
+  seats = ReleaseSeat(seats, token);
+  EmitSeats();
+});
 let currentMove;
 let board;
 let cardState;
@@ -65,10 +73,11 @@ function EmitSeats()
   io.sockets.sockets.forEach((s) => s.emit("seats", SeatsView(seats, s.data.player.token)));
 }
 
-// whether any connected socket still belongs to this token
-function TokenConnected(token)
+// tokens of every socket still connected; inside a "disconnect" handler the leaving socket
+// is already removed (socket.io 4 removes it from the namespace before emitting the event)
+function ConnectedTokens()
 {
-  return [...io.sockets.sockets.values()].some((s) => s.data.player.token === token);
+  return [...io.sockets.sockets.values()].map((s) => s.data.player.token);
 }
 
 RestartGame();
@@ -107,8 +116,10 @@ io.on("connection", (socket) =>
 
   console.log("connected:", socket.id, name, id);
   // reconnected within the grace period -> keep the seat
-  clearTimeout(releaseTimers.get(token));
-  releaseTimers.delete(token);
+  if (releaseTimers.Cancel(token))
+  {
+    console.log(`${name} ${id} reconnected in time, keeping seat ${SeatOf(seats, token)}`);
+  }
 
   socket.emit("welcome", { id, name });
   socket.emit("gameState", cardState, currentMove, board);
@@ -125,6 +136,22 @@ io.on("connection", (socket) =>
     }
     seats = claim.seats;
     console.log(`pickSeat: ${name} ${id} is now ${color}`);
+    EmitSeats();
+  });
+
+  // gives up this player's seat so they become a spectator (and may pick the other side);
+  // the game itself carries on unchanged
+  socket.on("leaveSeat", () =>
+  {
+    const color = SeatColor();
+    const leave = LeaveSeat(seats, token);
+    if (!leave.ok)
+    {
+      console.log(`leaveSeat from ${socket.id}: rejected (${leave.reason})`);
+      return;
+    }
+    seats = leave.seats;
+    console.log(`leaveSeat: ${name} ${id} left ${color}`);
     EmitSeats();
   });
 
@@ -166,17 +193,11 @@ io.on("connection", (socket) =>
   socket.on("disconnect", () =>
   {
     console.log(`disconnected: ${socket.id}`);
-    if (SeatColor() === null || TokenConnected(token))
+    if (ShouldReleaseSeat(seats, token, ConnectedTokens()))
     {
-      return;
+      console.log(`${name} ${id} left seat ${SeatColor()}; releasing in ${SEAT_GRACE_MS} ms unless they reconnect`);
+      releaseTimers.Schedule(token);
     }
-    releaseTimers.set(token, setTimeout(() =>
-    {
-      releaseTimers.delete(token);
-      console.log(`seat ${SeatOf(seats, token)} released: ${name} ${id} did not reconnect`);
-      seats = ReleaseSeat(seats, token);
-      EmitSeats();
-    }, SEAT_GRACE_MS));
   });
 
   // this player's colour from their seat, or null for a spectator
