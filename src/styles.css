@@ -101,6 +101,22 @@ body {
   color: blue;
 }
 
+/* seat picker shown to spectators */
+.seat-picker {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.seat-button-red {
+  color: red;
+}
+
+.seat-button-blue {
+  color: blue;
+}
+
 /* layout: red hand above, board + neutral card in the middle, blue hand below */
 .game-column {
   display: flex;

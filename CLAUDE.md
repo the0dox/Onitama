@@ -32,7 +32,7 @@ To play both sides locally, run the server and open the client in two browser ta
 3. The `io.use` middleware rejects mismatched credentials with `"unauthorized"`. On that error the client discards the cached identity and re-registers. This handles server restarts, which wipe all state.
 4. `getPlayer()` memoizes a module-level promise so React StrictMode's double-invoked effect doesn't register twice.
 
-**Game state is server-authoritative, global and in-memory**: one `board`, one `currentMove`, and two `playerSlots` (holding player tokens) shared by all connections. There are no rooms. The first two connecting players claim slots 0 (X) and 1 (O); reconnecting players keep their slot. Later connections are spectators.
+**Game state is server-authoritative, global and in-memory**: one `board`, one `cardState`, one `currentMove`, and `seats` (`[redToken | null, blueToken | null]`) shared by all connections. There are no rooms. Every connection starts as a spectator and picks a free side with `pickSeat`. Seat rules are pure functions in `server/src/seats.js` (`SeatOf`, `ClaimSeat`, `ReleaseSeat`, `SeatsView`). When a seated player's last socket disconnects, the seat is freed after `SEAT_GRACE_MS` (5 s) unless the same token reconnects first, so a refresh keeps the seat. Tokens never leave the server: each client only gets its own `SeatsView`. Whose turn it is comes from `cardState.currentPlayer`; `currentMove` only counts accepted moves (blue can move first, so `currentMove % 2` does not give the colour).
 
 **Game play rules**
 1. game takes place on a 5x5 grid. the top left corner is (0,0) and +y points downwards by default
@@ -67,17 +67,21 @@ To play both sides locally, run the server and open the client in two browser ta
 8. if the game is not over the turn passes to the next player
 
 **Socket events**:
-- server → client: `welcome(player)`, `gameState(cardState, currentMove, board)` (sent on connect and broadcast after each accepted move)
-- client → server: `pickMove(startingLocation, card, move)`. The client sends the location of the piece it wants to move, the card they selected, and the move within the card they want to use. The server checks if it the players turn (`currentMove % 2` against the slot token), It then applies the move according to game play turn structure rules 5-8 it the server then broadcasts the new gamestate to all players.
+- server → client: `welcome({id, name})`, `gameState(cardState, currentMove, board)` (sent on connect and broadcast after each accepted move), `seats({red, blue, mine})` (`red`/`blue` are booleans for "taken" and `mine` is the receiver's colour or null; sent on connect and to every socket whenever a seat is claimed or released)
+- client → server: `pickSeat(color)` claims the free `"red"`/`"blue"` seat; it is rejected (logged) with `bad-color`, `already-seated` or `taken`.
+- client → server: `pickMove(start, cardName, moveIndex)`. The client sends the location of the piece it wants to move, the name of the card it selected, and the index of the move within that card. The server validates it with `CheckMove` (the sender's seat colour must equal `cardState.currentPlayer`, then start square, card in the sender's hand, move index, target) and logs and ignores rejected moves. An accepted move goes through `ApplyMove` (turn structure 5, 6 and 8), `currentMove` is incremented, and the new state is broadcast to all players. Win checks (turn structure 7) are not implemented yet, so the turn always passes.
 
 **Shared game logic** (`shared/`, importable by client and server; pure functions, no mutation):
 - `shared/cards.json` — the 16 cards `{ name, suit, moves: [{x, y}] }`. Moves are written from red's perspective; names are unique (currently placeholders `card-01`… plus `horse`).
+- `shared/game/board.js` — `BOARD_SIZE`, `PIECES` (`r`/`R` red disciple/sensei, `b`/`B` blue), `GATES`, `PieceOwner`, `OnBoard` (integers only), `StartingPiece`, `CreateBoard`. Boards are indexed `board[x][y]`. It also exports the React `ButtonContext`, so it imports `react`.
 - `shared/game/cards.js` — `CARDS` (deep-frozen) and `CardsByName()`.
 - `shared/game/random.js` — `HashSeed()` (FNV-1a string → uint32) and `CreateRng()` (mulberry32), so the `DECK_SEED` string reproduces a shuffle.
 - `shared/game/deck.js` — `ShuffleDeck`, `DealCards`, `FirstPlayer`, `CreateCardState`, `SwapWithNeutral`, `MovesForPlayer` (blue negates x and y). Game state holds cards **by name**: `{ hands: { red: [a, b], blue: [c, d] }, neutral, currentPlayer }`; undealt cards are discarded.
-- Not yet wired into the server: reading `DECK_SEED` (with a logged random fallback) is still to do.
+- `shared/game/moves.js` — `TargetFor`, `ValidTargets`, `ValidTarget`, and `CheckMove(board, cardState, color, start, cardName, moveIndex, cardsByName)`, which returns `{ ok: true, target }` or `{ ok: false, reason }` with reason `not-your-turn`, `no-piece`, `not-in-hand`, `bad-move` or `bad-target` (checked in that order).
+- `shared/game/turn.js` — `OtherPlayer` and `ApplyMove(board, cardState, start, target, cardName)`, which returns a new `{ board, cardState }`: piece moved (capturing), used card swapped with the neutral card, `currentPlayer` flipped. It throws if the card is not in the mover's hand, since `CheckMove` must run first.
+- The server resolves `DECK_SEED` in `server/src/seed.js` (`ResolveDeckSeed`, with a logged random fallback); only the first game uses it, rematches reshuffle randomly.
 
-**Client rendering**: `App` holds the state received from the server and renders `Board`, which computes the next board and the winner (`DetermineWinner`) locally. `Board`/`Square` are reused from an earlier local-only version.
+**Client rendering**: `App` (`src/App.jsx`) holds the state received from the server (`cardState`, `currentMove`, board) and the local selection (`src/selection.js`). It renders both hands (`CardHand`), the neutral card (`CardView`, shown from the current player's perspective) and `Board`, a component defined in `App.jsx` that only draws the squares and highlights; there is no client-side winner check. Target squares come from `ValidTargets` once a piece and a card are selected, and clicking one emits `pickMove`. Squares receive the click handler through `ButtonContext`.
 
 ## Gotchas
 - The server URL `http://localhost:3001` is hardcoded in `App.jsx`. The server's CORS accepts any `http://localhost:<port>` origin.

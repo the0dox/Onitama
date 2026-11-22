@@ -1,5 +1,6 @@
 import { useContext } from "react";
-import { ButtonContext, PieceOwner } from "../shared/game/board.js";
+import { PieceOwner } from "../shared/game/board.js";``
+import { ButtonContext } from "./BoardContext.jsx"
 
 // css classes for a square: piece colour plus an optional "target" or "selected" highlight
 function SquareClass(piece, highlight)

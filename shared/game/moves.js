@@ -28,17 +28,22 @@ export function ValidTarget(board, player, x, y)
 }
 
 // validates a pickMove request; returns { ok: true, target } or { ok: false, reason }
-// reason is one of "not-your-turn", "no-piece", "bad-move", "bad-target"; checks run in that order
+// reason is one of "not-your-turn", "no-piece", "not-in-hand", "bad-move", "bad-target"; checks run in that order
 // so nothing indexes the board with an unchecked start
-export function CheckMove(board, currentPlayer, color, start, cardName, moveIndex, cardsByName)
+// cardState is { hands: { red, blue }, neutral, currentPlayer }: the turn and the sender's hand come from it
+export function CheckMove(board, cardState, color, start, cardName, moveIndex, cardsByName)
 {
-  if (color === null || color !== currentPlayer)
+  if (color === null || color !== cardState.currentPlayer)
   {
     return { ok: false, reason: "not-your-turn" };
   }
   if (!OnBoard(start?.x, start?.y) || PieceOwner(board[start.x][start.y]) !== color)
   {
     return { ok: false, reason: "no-piece" };
+  }
+  if (!InHand(cardState, color, cardName))
+  {
+    return { ok: false, reason: "not-in-hand" };
   }
   const card = cardsByName.get(cardName);
   const target = card ? TargetFor(start, card, color, moveIndex) : null;
@@ -51,4 +56,10 @@ export function CheckMove(board, currentPlayer, color, start, cardName, moveInde
     return { ok: false, reason: "bad-target" };
   }
   return { ok: true, target };
+}
+
+// true if cardName is a string naming one of the cards in player's hand
+function InHand(cardState, player, cardName)
+{
+  return typeof cardName === "string" && (cardState.hands?.[player] ?? []).includes(cardName);
 }

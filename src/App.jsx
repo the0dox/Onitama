@@ -3,9 +3,11 @@ import { useState, useEffect} from "react";
 import Square from "./Square";
 import { CardHand, CardView } from "./CardHand";
 import { CARDS, CardsByName } from "../shared/game/cards.js";
-import { PieceOwner, ButtonContext } from "../shared/game/board.js";
+import { PieceOwner } from "../shared/game/board.js";
+import { ButtonContext } from "./BoardContext.jsx"
 import { ValidTargets } from "../shared/game/moves.js";
 import { EMPTY_SELECTION, ToggleCard, TogglePiece } from "./selection.js";
+import SeatPicker from "./SeatPicker.jsx";
 
 // resolves the card names sent by the server into full card definitions
 const BY_NAME = CardsByName(CARDS);
@@ -71,17 +73,18 @@ export default function App()
   const [currentSquares, setSquares] = useState(null);
   const [cardState, setCardState] = useState(null);
   const [selection, setSelection] = useState(EMPTY_SELECTION);
+  // { red: taken, blue: taken, mine: colour | null } as sent by the server
+  const [seats, setSeats] = useState(null);
   const status = cardState ? `${cardState.currentPlayer}'s turn` : "";
 
   // only the seated player whose turn it is may select anything
-  const myColor = player?.color ?? null;
+  const myColor = seats?.mine ?? null;
   const canAct = myColor !== null && cardState !== null && cardState.currentPlayer === myColor;
   // green squares appear only once both a piece and a card are chosen
   const targets = canAct && selection.piece && selection.card
     ? ValidTargets(currentSquares, selection.piece, BY_NAME.get(selection.card), myColor)
     : [];
 
-  const connectionName = player ? `${player.name}:${player.id}` : "connecting...";
 
   // register (or reuse saved identity), then open the socket
   useEffect(() =>
@@ -145,12 +148,18 @@ export default function App()
       console.log("recieved gamestate turn", socket.id);
     }
     socket.on("gameState", OnGameState);
-    return () => socket.off("gameState", OnGameState);
+    socket.on("seats", setSeats);
+    return () =>
+    {
+      socket.off("gameState", OnGameState);
+      socket.off("seats", setSeats);
+    };
   }, []);
 
   return (
     <ButtonContext value={OnSquareClick}>
-      {connectionName}
+      <RenderHeader/>
+      <SeatPicker seats={seats} onPick={(color) => socket.emit("pickSeat", color)} />
       <div className="game-column">
         {RenderHand("red")}
         <div className="game">
@@ -197,6 +206,7 @@ export default function App()
     console.log("on square clicked");
     if (!canAct)
     {
+      console.log("cant act yet");
       return;
     }
     const target = targets.find((t) => t.x === x && t.y === y);
@@ -236,6 +246,26 @@ export default function App()
       </div>
     );
   }
+
+  function RenderHeader()
+  {
+    const connectionName = player ? `${player.name}:${player.id}` : "connecting...";
+    let displayClass;
+    switch(myColor)
+    {
+      case "red":
+        displayClass = "p1"
+      break;
+      case "blue":
+        displayClass = "p2"
+      break;
+    }
+    return(
+    <div className={displayClass}>
+      {connectionName}
+    </div>
+    );
+  }  
 }
 
 // the highlight for (x, y): green target, selected piece, or none
