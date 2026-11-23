@@ -1,11 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { BOARD_SIZE, CreateBoard, StartingPiece, PieceOwner, OnBoard } from "./board.js";
+import { BOARD_SIZE, CreateBoard, StartingPiece, PieceOwner, OnBoard, OtherPlayer } from "./board.js";
 
 // returns the pieces along row y, reading x from left to right
 function Row(board, y)
 {
   return board.map((column) => column[y]);
 }
+
+// Turn structure 8: the turn passes to the other player
+describe("OtherPlayer", () =>
+{
+  it("swaps red and blue", () =>
+  {
+    expect(OtherPlayer("red")).toBe("blue");
+    expect(OtherPlayer("blue")).toBe("red");
+  });
+});
 
 // Game play setup 1-3: 5x5 grid, red on row 0, blue on row 4, senseis on their gates
 describe("CreateBoard", () =>

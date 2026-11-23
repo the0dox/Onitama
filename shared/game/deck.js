@@ -28,11 +28,39 @@ export function FirstPlayer(neutralName, byName)
   return byName.get(neutralName).suit;
 }
 
+// cards dealt at the start of a game: two per hand plus the neutral card
+export const DEAL_SIZE = 5;
+
+// builds the starting card state from an already ordered deck: deal, then pick the first player
+export function CardStateFromDeck(deck, byName)
+{
+  const { hands, neutral } = DealCards(deck);
+  return { hands, neutral, currentPlayer: FirstPlayer(neutral, byName) };
+}
+
 // builds the starting card state for a new game: shuffle, deal, pick first player
 export function CreateCardState(cards, seedString)
 {
-  const { hands, neutral } = DealCards(ShuffleDeck(cards, seedString));
-  return { hands, neutral, currentPlayer: FirstPlayer(neutral, CardsByName(cards)) };
+  return CardStateFromDeck(ShuffleDeck(cards, seedString), CardsByName(cards));
+}
+
+// validates an injected deck of card names (deal order); returns { ok: true, deck } with the
+// card objects, or { ok: false, reason } with not-array, too-few, unknown-card or duplicate
+export function CheckDeckOverride(names, byName)
+{
+  if (!Array.isArray(names))
+  {
+    return { ok: false, reason: "not-array" };
+  }
+  if (names.length < DEAL_SIZE)
+  {
+    return { ok: false, reason: "too-few" };
+  }
+  if (!names.every((name) => typeof name === "string" && byName.has(name)))
+  {
+    return { ok: false, reason: "unknown-card" };
+  }
+  return { ok: true, deck: names.map((name) => byName.get(name)) };
 }
 
 // swaps the player's used card with the neutral card; returns null if the card isn't in their hand

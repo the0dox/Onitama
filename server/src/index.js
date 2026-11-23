@@ -4,11 +4,12 @@ import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { randomUUID, randomBytes } from "node:crypto";
 import { CARDS, CardsByName } from "../../shared/game/cards.js";
-import { CreateCardState } from "../../shared/game/deck.js";
+import { CreateCardState, CardStateFromDeck } from "../../shared/game/deck.js";
 import { CreateBoard } from "../../shared/game/board.js";
-import { CheckMove } from "../../shared/game/moves.js";
-import { ApplyMove } from "../../shared/game/turn.js";
+import { CheckMove, CheckPass } from "../../shared/game/moves.js";
+import { ApplyMove, ApplyPass } from "../../shared/game/turn.js";
 import { ResolveDeckSeed } from "./seed.js";
+import { LoadServerSettings, ResolveOverrideDeck } from "./settings.js";
 import { EMPTY_SEATS, SeatOf, ClaimSeat, ReleaseSeat, LeaveSeat, ShouldReleaseSeat, SeatsView } from "./seats.js";
 import { CreateReleaseTimers } from "./releaseTimers.js";
 
@@ -17,6 +18,12 @@ const CARDS_BY_NAME = CardsByName(CARDS);
 // how long a disconnected player keeps their seat; longer than the socket.io client's
 // reconnect backoff (1 s, 2 s, 4 s, 5 s... with ±50% jitter) so a brief network drop doesn't lose it
 const SEAT_GRACE_MS = 15000;
+// test-only preset deck from serverSettings.json; when set, every game deals it instead of shuffling
+const OVERRIDE_DECK = ResolveOverrideDeck(LoadServerSettings(), CARDS_BY_NAME);
+if (OVERRIDE_DECK !== null)
+{
+  console.log(`using overrideDeck: ${OVERRIDE_DECK.map((card) => card.name).join(", ")}`);
+}
 
 // allow any localhost port (a second Vite dev server lands on 5174, 5175, ...)
 const CLIENT = /^http:\/\/localhost:\d+$/;
@@ -46,25 +53,57 @@ const releaseTimers = CreateReleaseTimers(SEAT_GRACE_MS, (token) =>
 let currentMove;
 let board;
 let cardState;
+let winner; // "red" | "blue" | null; once set, moves are rejected until a rematch
 let gamesStarted = 0;
 
-// resets turn, board and cards for a new game; the first game honours DECK_SEED, later ones reshuffle randomly
-function RestartGame()
+// starting cards for the next game: the override deck if set, otherwise a shuffle
+// (the first game honours DECK_SEED, later ones reshuffle randomly)
+function NextCardState()
 {
+  if (OVERRIDE_DECK !== null)
+  {
+    console.log(`game ${gamesStarted + 1} deck (override)`);
+    return CardStateFromDeck(OVERRIDE_DECK, CARDS_BY_NAME);
+  }
   const env = gamesStarted === 0 ? process.env : {};
   const { seed, source } = ResolveDeckSeed(env, () => randomBytes(8).toString("hex"));
   console.log(`game ${gamesStarted + 1} deck seed (${source}): ${seed}`);
+  return CreateCardState(CARDS, seed);
+}
 
+// resets turn, board, cards and winner for a new game
+function RestartGame()
+{
   currentMove = 0;
   board = CreateBoard();
-  cardState = CreateCardState(CARDS, seed);
+  cardState = NextCardState();
+  winner = null;
   gamesStarted++;
 }
 
-// sends the current turn, board and cards to every connected client
+// sends the current turn, board, cards and winner to every connected client
 function BroadcastState()
 {
-  io.emit("gameState", cardState, currentMove, board);
+  io.emit("gameState", cardState, currentMove, board, winner);
+}
+
+// logs and returns true if the game already has a winner, so the caller drops the request
+function RejectIfOver(event, color)
+{
+  if (winner === null)
+  {
+    return false;
+  }
+  console.log(`${event} from ${color}: rejected (game-over) ${winner} has already won`);
+  return true;
+}
+
+// counts an accepted turn (move or pass), logs it and sends the new state to everyone
+function FinishTurn(summary)
+{
+  currentMove++;
+  console.log(`move ${currentMove} done: ${summary}`);
+  BroadcastState();
 }
 
 // sends every connected client its own view of the seats (which are taken, and its own colour)
@@ -122,7 +161,7 @@ io.on("connection", (socket) =>
   }
 
   socket.emit("welcome", { id, name });
-  socket.emit("gameState", cardState, currentMove, board);
+  socket.emit("gameState", cardState, currentMove, board, winner);
   socket.emit("seats", SeatsView(seats, token));
 
   // seats this player as the requested colour if it is free and they hold no seat yet
@@ -155,11 +194,15 @@ io.on("connection", (socket) =>
     EmitSeats();
   });
 
-  // validates the requested move, applies it (turn structure 5, 6 and 8) and broadcasts the new state;
-  // win checks (turn structure 7) are not done yet
+  // validates the requested move, applies it (turn structure 5 to 8, including win checks)
+  // and broadcasts the new state; no moves are accepted once the game has a winner
   socket.on("pickMove", (start, cardName, moveIndex) =>
   {
     const color = SeatColor();
+    if (RejectIfOver("pickMove", color))
+    {
+      return;
+    }
     // every value from the client is checked before anything indexes the board with it
     const check = CheckMove(board, cardState, color, start, cardName, moveIndex, CARDS_BY_NAME);
     if (!check.ok)
@@ -171,18 +214,40 @@ io.on("connection", (socket) =>
 
     console.log(`pickMove from ${color}: piece (${start.x},${start.y}) card ${cardName}[${moveIndex}] -> (${target.x},${target.y})`);
 
-    ({ board, cardState } = ApplyMove(board, cardState, start, target, cardName));
-    currentMove++;
-    console.log(`move ${currentMove} done: ${cardState.currentPlayer} to play, neutral card ${cardState.neutral}`);
-    BroadcastState();
+    ({ board, cardState, winner } = ApplyMove(board, cardState, start, target, cardName));
+    FinishTurn(winner !== null ? `${winner} wins` : `${cardState.currentPlayer} to play, neutral card ${cardState.neutral}`);
   });
 
-  // starts a new game; only seated players may restart, spectators are ignored
+  // turn structure 1: a player with no legal move picks a card to swap with the neutral card, and the turn passes
+  socket.on("passTurn", (cardName) =>
+  {
+    const color = SeatColor();
+    if (RejectIfOver("passTurn", color))
+    {
+      return;
+    }
+    const check = CheckPass(board, cardState, color, cardName, CARDS_BY_NAME);
+    if (!check.ok)
+    {
+      console.log(`passTurn from ${color}: rejected (${check.reason})`);
+      return;
+    }
+    cardState = ApplyPass(cardState, cardName);
+    FinishTurn(`${color} had no legal move and passed with ${cardName}; ${cardState.currentPlayer} to play`);
+  });
+
+  // starts a new game (rematch); only seated players may restart, and only once the game is over
   socket.on("restartGame", () =>
   {
-    if (SeatColor() === null)
+    const color = SeatColor();
+    if (color === null)
     {
       console.log(`rejected restart from spectator ${socket.id}`);
+      return;
+    }
+    if (winner === null)
+    {
+      console.log(`restartGame from ${color}: rejected (game-not-over)`);
       return;
     }
     RestartGame();

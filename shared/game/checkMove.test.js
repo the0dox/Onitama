@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { CheckMove } from "./moves.js";
+import { MakeBoard } from "./testBoard.js";
 
 // one step right (+x) or one step forward (+y), written from red's perspective
 const STEP = { name: "step", suit: "red", moves: [{ x: 1, y: 0 }, { x: 0, y: 1 }] };
@@ -10,13 +11,6 @@ const SPARE = { name: "spare", suit: "red", moves: [{ x: 0, y: 1 }] };
 const CARDS_BY_NAME = new Map([[STEP.name, STEP], [CROSS.name, CROSS], [SPARE.name, SPARE]]);
 // both players hold both test cards unless a test says otherwise
 const HANDS = { red: [STEP.name, CROSS.name], blue: [STEP.name, CROSS.name] };
-
-// builds a 5x5 board indexed board[x][y] holding only the given pieces
-function MakeBoard(pieces)
-{
-  return Array.from({ length: 5 }, (_, x) =>
-    Array.from({ length: 5 }, (_, y) => pieces.find((p) => p.x === x && p.y === y)?.piece ?? null));
-}
 
 // card state with currentPlayer to move; hands default to HANDS, the neutral card is SPARE
 function MakeCardState(currentPlayer, hands = HANDS)

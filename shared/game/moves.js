@@ -58,6 +58,33 @@ export function CheckMove(board, cardState, color, start, cardName, moveIndex, c
   return { ok: true, target };
 }
 
+// turn structure 1: true if some piece of player's can reach a valid target with a card in their hand
+export function HasLegalMove(board, cardState, player, cardsByName)
+{
+  const cards = (cardState.hands?.[player] ?? []).map((name) => cardsByName.get(name)).filter(Boolean);
+  return board.some((column, x) => column.some((cell, y) =>
+    PieceOwner(cell) === player && cards.some((card) => ValidTargets(board, { x, y }, card, player).length > 0)));
+}
+
+// validates a passTurn request (turn structure 1, then straight to 6); returns { ok: true } or { ok: false, reason }
+// reason is one of "not-your-turn", "not-in-hand", "has-legal-move"; checks run in that order
+export function CheckPass(board, cardState, color, cardName, cardsByName)
+{
+  if (color === null || color !== cardState.currentPlayer)
+  {
+    return { ok: false, reason: "not-your-turn" };
+  }
+  if (!InHand(cardState, color, cardName))
+  {
+    return { ok: false, reason: "not-in-hand" };
+  }
+  if (HasLegalMove(board, cardState, color, cardsByName))
+  {
+    return { ok: false, reason: "has-legal-move" };
+  }
+  return { ok: true };
+}
+
 // true if cardName is a string naming one of the cards in player's hand
 function InHand(cardState, player, cardName)
 {

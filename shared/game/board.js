@@ -15,6 +15,12 @@ export const GATES = Object.freeze({
   blue: Object.freeze({ x: 2, y: 4 }),
 });
 
+// the opposing colour: the one that moves after player, and whose gate player's sensei targets
+export function OtherPlayer(player)
+{
+  return player === "red" ? "blue" : "red";
+}
+
 // which side owns a piece letter: "red", "blue", or null for an empty square
 export function PieceOwner(piece)
 {

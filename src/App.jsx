@@ -5,7 +5,7 @@ import { CardHand, CardView } from "./CardHand";
 import { CARDS, CardsByName } from "../shared/game/cards.js";
 import { PieceOwner } from "../shared/game/board.js";
 import { ButtonContext } from "./BoardContext.jsx";
-import { ValidTargets } from "../shared/game/moves.js";
+import { ValidTargets, HasLegalMove } from "../shared/game/moves.js";
 import { EMPTY_SELECTION, ToggleCard, TogglePiece } from "./selection.js";
 import SeatPicker from "./SeatPicker.jsx";
 
@@ -75,11 +75,14 @@ export default function App()
   const [selection, setSelection] = useState(EMPTY_SELECTION);
   // { red: taken, blue: taken, mine: colour | null } as sent by the server
   const [seats, setSeats] = useState(null);
-  const status = cardState ? `${cardState.currentPlayer}'s turn` : "";
-
-  // only the seated player whose turn it is may select anything
+  // "red" | "blue" once the server reports a win, otherwise null
+  const [winner, setWinner] = useState(null);
+  // only the seated player whose turn it is may select anything, and nobody once the game is won
   const myColor = seats?.mine ?? null;
-  const canAct = myColor !== null && cardState !== null && cardState.currentPlayer === myColor;
+  const canAct = winner === null && myColor !== null && cardState?.currentPlayer === myColor;
+  // turn structure 1: with no legal move the player only picks a card to swap, then confirms the pass
+  const mustPass = canAct && currentSquares !== null && !HasLegalMove(currentSquares, cardState, myColor, BY_NAME);
+  const status = StatusText(cardState, winner, mustPass);
   // green squares appear only once both a piece and a card are chosen
   const targets = canAct && selection.piece && selection.card
     ? ValidTargets(currentSquares, selection.piece, BY_NAME.get(selection.card), myColor)
@@ -138,12 +141,13 @@ export default function App()
   // recieve current move from server
   useEffect(() =>
   {
-    // replaces local card state, turn and board with the server's; any in-progress selection is stale
-    function OnGameState(cards, turn, squares)
+    // replaces local card state, turn, board and winner with the server's; any in-progress selection is stale
+    function OnGameState(cards, turn, squares, winnerColor)
     {
       setCardState(cards);
       setCurrentMove(turn);
       setSquares(squares);
+      setWinner(winnerColor ?? null);
       setSelection(EMPTY_SELECTION);
       console.log("recieved gamestate turn", socket.id);
     }
@@ -178,6 +182,8 @@ export default function App()
               />
             )}
           </div>
+          {RenderRematch()}
+          {RenderPass()}
           {RenderNeutral()}
         </div>
         {RenderHand("blue")}
@@ -204,11 +210,12 @@ export default function App()
     );
   }
 
-  // a target square sends the move; one of my pieces toggles the piece selection; anything else is ignored
+  // a target square sends the move; one of my pieces toggles the piece selection; anything else is ignored.
+  // While the player must pass, pieces can't be selected, since no piece has a target
   function OnSquareClick(x, y)
   {
     console.log("on square clicked");
-    if (!canAct)
+    if (!canAct || mustPass)
     {
       console.log("cant act yet");
       return;
@@ -236,6 +243,41 @@ export default function App()
     setSelection((prev) => ToggleCard(prev, cardName));
   }
 
+  // once the game is won, seated players get a button that asks the server for a new game
+  function RenderRematch()
+  {
+    if (winner === null || myColor === null)
+    {
+      return null;
+    }
+    return (
+      <button className="rematch" onClick={() => socket.emit("restartGame")}>
+        Rematch
+      </button>
+    );
+  }
+
+  // with no legal move and a card selected, a button confirms passing with that card
+  function RenderPass()
+  {
+    if (!mustPass || selection.card === null)
+    {
+      return null;
+    }
+    return (
+      <button className="pass" onClick={OnPassClick}>
+        Pass with {selection.card}
+      </button>
+    );
+  }
+
+  // sends the pass to the server; the selection is stale once the turn is gone
+  function OnPassClick()
+  {
+    socket.emit("passTurn", selection.card);
+    setSelection(EMPTY_SELECTION);
+  }
+
   // renders the neutral card from the perspective of the player about to move
   function RenderNeutral()
   {
@@ -250,6 +292,21 @@ export default function App()
       </div>
     );
   }
+}
+
+// the status line: the winner once the game is over, a pass prompt when the viewer has no legal move,
+// otherwise whose turn it is
+function StatusText(cardState, winner, mustPass)
+{
+  if (winner !== null)
+  {
+    return `${winner} wins`;
+  }
+  if (mustPass)
+  {
+    return "No legal moves: pick a card to swap with the neutral card";
+  }
+  return cardState ? `${cardState.currentPlayer}'s turn` : "";
 }
 
 // the highlight for (x, y): green target, selected piece, or none

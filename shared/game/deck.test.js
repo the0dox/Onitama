@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ShuffleDeck, DealCards, FirstPlayer, CreateCardState, SwapWithNeutral, MovesForPlayer } from "./deck.js";
+import { ShuffleDeck, DealCards, FirstPlayer, CreateCardState, CardStateFromDeck, CheckDeckOverride, SwapWithNeutral, MovesForPlayer } from "./deck.js";
 import { CardsByName } from "./cards.js";
 
 // builds a test card; suit defaults to red, moves to a single forward step
@@ -166,5 +166,60 @@ describe("MovesForPlayer", () =>
   it("returns copies, not the card's own move objects", () =>
   {
     expect(MovesForPlayer(card, "red")[0]).not.toBe(card.moves[0]);
+  });
+});
+
+// serverSettings overrideDeck: an injected deck is dealt in the given order
+describe("CardStateFromDeck", () =>
+{
+  it("deals in deck order and the neutral card's suit moves first", () =>
+  {
+    const deck = MakeDeck(5);
+    expect(CardStateFromDeck(deck, CardsByName(deck))).toEqual({
+      hands: { red: ["c0", "c1"], blue: ["c2", "c3"] },
+      neutral: "c4",
+      currentPlayer: "red",
+    });
+  });
+
+  it("matches CreateCardState for the shuffled deck of the same seed", () =>
+  {
+    const deck = MakeDeck(16);
+    expect(CardStateFromDeck(ShuffleDeck(deck, "s"), CardsByName(deck))).toEqual(CreateCardState(deck, "s"));
+  });
+});
+
+// serverSettings overrideDeck validation
+describe("CheckDeckOverride", () =>
+{
+  const deck = MakeDeck(16);
+  const byName = CardsByName(deck);
+
+  it("rejects a value that is not an array", () =>
+  {
+    expect(CheckDeckOverride("c0", byName)).toEqual({ ok: false, reason: "not-array" });
+  });
+
+  it("rejects fewer than five names", () =>
+  {
+    expect(CheckDeckOverride(["c0", "c1", "c2", "c3"], byName)).toEqual({ ok: false, reason: "too-few" });
+  });
+
+  it("rejects unknown or non-string names", () =>
+  {
+    expect(CheckDeckOverride(["c0", "c1", "c2", "c3", "nope"], byName)).toEqual({ ok: false, reason: "unknown-card" });
+    expect(CheckDeckOverride(["c0", "c1", "c2", "c3", 4], byName)).toEqual({ ok: false, reason: "unknown-card" });
+  });
+
+  it("rejects duplicate names", () =>
+  {
+    expect(CheckDeckOverride(["c0", "c1", "c2", "c3", "c0"], byName)).toEqual({ ok: false, reason: "duplicate" });
+  });
+
+  it("accepts more than five names and returns the cards in order", () =>
+  {
+    const check = CheckDeckOverride(["c5", "c4", "c3", "c2", "c1", "c0"], byName);
+    expect(check.ok).toBe(true);
+    expect(Names(check.deck)).toEqual(["c5", "c4", "c3", "c2", "c1", "c0"]);
   });
 });
