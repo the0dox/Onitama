@@ -1,4 +1,4 @@
-import { useState, useEffect} from "react";
+import { useState, useEffect, useRef } from "react";
 
 import Square from "./Square";
 import { CardHand, CardView } from "./CardHand";
@@ -9,6 +9,8 @@ import { ValidTargets, HasLegalMove } from "../shared/game/moves.js";
 import { EMPTY_SELECTION, ToggleCard, TogglePiece } from "./selection.js";
 import SeatPicker from "./SeatPicker.jsx";
 import WinPopup from "./WinPopup.jsx";
+import Lobby from "./Lobby.jsx";
+import { ReadRoomFromUrl, RoomUrl } from "./roomUrl.js";
 
 // resolves the card names sent by the server into full card definitions
 const BY_NAME = CardsByName(CARDS);
@@ -20,6 +22,17 @@ const STORAGE_KEY = "player";
 
 // don't connect until we have credentials from POST /players
 const socket = io(SERVER, { autoConnect: false });
+
+// asks the server to join the room named in the URL; returns false when the URL names none
+function JoinRoomFromUrl()
+{
+  const code = ReadRoomFromUrl(window.location.search);
+  if (code !== null)
+  {
+    socket.emit("joinRoom", code);
+  }
+  return code !== null;
+}
 
 // shared promise so StrictMode's double effect doesn't register twice
 let playerPromise = null;
@@ -69,8 +82,6 @@ function ForgetPlayer()
 // top-level component: owns the connection and the game state received from the server
 export default function App()
 {
-  const [player, setPlayer] = useState(null);
-  const [currentMove, setCurrentMove] = useState(0);
   const [currentSquares, setSquares] = useState(null);
   const [cardState, setCardState] = useState(null);
   const [selection, setSelection] = useState(EMPTY_SELECTION);
@@ -78,6 +89,12 @@ export default function App()
   const [seats, setSeats] = useState(null);
   // "red" | "blue" once the server reports a win, otherwise null
   const [winner, setWinner] = useState(null);
+  // the joined room { id, name }, or null while in the lobby
+  const [room, setRoom] = useState(null);
+  // lobby list [{ id, name, red, blue, members, status }] as sent by the server
+  const [rooms, setRooms] = useState([]);
+  // id of the joined room, readable from socket handlers registered once
+  const roomIdRef = useRef(null);
   // only the seated player whose turn it is may select anything, and nobody once the game is won
   const myColor = seats?.mine ?? null;
   const canAct = winner === null && myColor !== null && cardState?.currentPlayer === myColor;
@@ -103,7 +120,6 @@ export default function App()
       {
         return;
       }
-      setPlayer(me);
       socket.auth = { id: me.id, token: me.token };
       socket.connect();
     }
@@ -119,14 +135,9 @@ export default function App()
       }
     }
 
-    // merges the identity confirmed by the server into local state
-    function OnWelcome(me)
-    {
-      setPlayer((prev) => ({ ...prev, ...me }));
-    }
-
     socket.on("connect_error", OnConnectError);
-    socket.on("welcome", OnWelcome);
+    // a (re)connected socket starts in the lobby on the server, so rejoin the room named in the URL
+    socket.on("connect", JoinRoomFromUrl);
     Connect().catch(console.error);
 
     // unsubscribe and close the socket on unmount
@@ -134,7 +145,7 @@ export default function App()
     {
       cancelled = true;
       socket.off("connect_error", OnConnectError);
-      socket.off("welcome", OnWelcome);
+      socket.off("connect", JoinRoomFromUrl);
       socket.disconnect();
     };
   }, []);
@@ -143,23 +154,76 @@ export default function App()
   useEffect(() =>
   {
     // replaces local card state, turn, board and winner with the server's; any in-progress selection is stale
-    function OnGameState(cards, turn, squares, winnerColor)
+    function OnGameState(cards, _turn, squares, winnerColor)
     {
       setCardState(cards);
-      setCurrentMove(turn);
       setSquares(squares);
       setWinner(winnerColor ?? null);
       setSelection(EMPTY_SELECTION);
       console.log("recieved gamestate turn", socket.id);
     }
+    // the server moved this socket into a room; put its code in the URL so a refresh rejoins it
+    function OnRoomJoined(joined)
+    {
+      roomIdRef.current = joined.id;
+      setRoom(joined);
+      if (ReadRoomFromUrl(window.location.search) !== joined.id)
+      {
+        window.history.pushState(null, "", RoomUrl(window.location.href, joined.id));
+      }
+    }
+
+    // a join or create was refused; an unknown room in the URL falls back to the lobby
+    function OnRoomError(reason)
+    {
+      console.log("roomError:", reason);
+      if (reason === "no-room")
+      {
+        ToLobby();
+      }
+    }
+
+    // browser back/forward: join the room now in the URL, or go back to the lobby when there is none
+    function OnPopState()
+    {
+      if (!JoinRoomFromUrl())
+      {
+        ToLobby();
+      }
+    }
+
     socket.on("gameState", OnGameState);
     socket.on("seats", setSeats);
+    socket.on("rooms", setRooms);
+    socket.on("roomJoined", OnRoomJoined);
+    socket.on("roomError", OnRoomError);
+    window.addEventListener("popstate", OnPopState);
     return () =>
     {
       socket.off("gameState", OnGameState);
       socket.off("seats", setSeats);
+      socket.off("rooms", setRooms);
+      socket.off("roomJoined", OnRoomJoined);
+      socket.off("roomError", OnRoomError);
+      window.removeEventListener("popstate", OnPopState);
     };
   }, []);
+
+  if (room === null)
+  {
+    return (
+      <div className="flex-container">
+        <div className="side-window">
+          <h1>Play Onitama</h1>
+          <Lobby
+            rooms={rooms}
+            onJoin={(roomId) => socket.emit("joinRoom", roomId)}
+            onCreate={(roomName) => socket.emit("createRoom", roomName)}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ButtonContext value={OnSquareClick}>
@@ -190,15 +254,40 @@ export default function App()
       </div>
       <div className="side-window">
         <h1>Play Onitama</h1>
-        <SeatPicker
-          seats={seats}
-          onPick={(color) => socket.emit("pickSeat", color)}
-          onLeave={() => socket.emit("leaveSeat")}
-        />
+        <div className="room-header">{`Room: ${room.name} (${room.id})`}</div>
+        <div className="button-container">
+          <SeatPicker
+            seats={seats}
+            onPick={(color) => socket.emit("pickSeat", color)}
+            onLeave={() => socket.emit("leaveSeat")}
+          />
+          <button onClick={ToLobby}>Back to lobby</button>
+        </div>
       </div>
     </div>
     </ButtonContext>
   );
+
+  // returns to the lobby: tells the server to leave the joined room, if any (its seat is freed at once),
+  // clears the room from the URL and drops the room's game state
+  function ToLobby()
+  {
+    if (roomIdRef.current !== null)
+    {
+      socket.emit("leaveRoom");
+    }
+    if (ReadRoomFromUrl(window.location.search) !== null)
+    {
+      window.history.pushState(null, "", RoomUrl(window.location.href, null));
+    }
+    roomIdRef.current = null;
+    setRoom(null);
+    setCardState(null);
+    setSquares(null);
+    setSeats(null);
+    setWinner(null);
+    setSelection(EMPTY_SELECTION);
+  }
 
   // renders a player's hand once the server has sent the card state
   function RenderHand(side)
@@ -212,7 +301,7 @@ export default function App()
         player={side}
         cardNames={cardState.hands[side]}
         byName={BY_NAME}
-        active={cardState.currentPlayer === side}
+        active={cardState.currentPlayer === side && cardState.currentPlayer === seats.mine}
         selectedCard={side === myColor ? selection.card : null}
         onCardClick={side === myColor ? OnCardClick : undefined}
       />
@@ -341,16 +430,3 @@ function Board({ squares, targets, selectedPiece})
     </>
   );
 }
-
-
-
-function RenderHeader({player, myColor})
-{
-  const connectionName = player ? `${player.name}:${player.id}` : "connecting...";
-  let displayClass = ({ red: "p1", blue: "p2" })[myColor];
-  return(
-  <div className={displayClass}>
-    {connectionName}
-  </div>
-  );
-}  

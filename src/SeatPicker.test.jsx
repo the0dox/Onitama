@@ -40,7 +40,7 @@ describe("SeatPicker", () =>
   {
     const onLeave = vi.fn();
     render(<SeatPicker seats={{ red: false, blue: true, mine: "blue" }} onPick={() => {}} onLeave={onLeave} />);
-    fireEvent.click(screen.getByRole("button", { name: "Leave seat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Return To Spectating" }));
     expect(onLeave).toHaveBeenCalledOnce();
   });
 

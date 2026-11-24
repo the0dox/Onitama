@@ -15,7 +15,7 @@ export default function SeatPicker({ seats, onPick, onLeave })
     return (
       <div className="seat-picker">
         <span className={`seat-button-${seats.mine}`}>{`Playing ${seats.mine}`}</span>
-        <button className="seat-button" onClick={onLeave}>Leave seat</button>
+        <button className="seat-button" onClick={onLeave}>Return To Spectating</button>
       </div>
     );
   }
