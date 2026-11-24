@@ -104,9 +104,10 @@ body {
 /* seat picker shown to spectators */
 .seat-picker {
   display: flex;
-  gap: 8px;
+  gap: 2px;
   align-items: center;
-  margin: 8px 0;
+  flex-direction: column;  margin: 8px 0;
+  align-items: stretch;
 }
 
 .seat-button-red {
@@ -223,4 +224,41 @@ body {
 
 .card--selected {
   box-shadow: 0 0 0 3px #ffd966;
+}
+
+.flex-container {
+  display: flex;
+  flex-direction: row; /* Optional: default is row */
+  justify-content: right; /* Horizontal spacing */
+  flex: 1 1 500px;
+  height: 100vh; /* Required for vertical centering */
+}
+
+.game-window
+{
+  flex: 0 1 500px;
+  min-width: 300px;
+}
+
+.side-window
+{
+  display: flex;
+  align-self: stretch;
+  align-items: stretch;
+  flex-direction: column;
+  flex: 1 1 500px;
+  min-width: 300px;
+  background: rgb(199, 199, 199);
+  height: 100vh;
+  gap: 10px;
+  padding-inline: 12px;
+}
+
+/* hide the game window when it and the side window (275px + 300px + 40px body margin) no longer fit side by side */
+@media (max-width: 400px)
+{
+  .game-window
+  {
+    display: none;
+  }
 }

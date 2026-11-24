@@ -162,32 +162,36 @@ export default function App()
 
   return (
     <ButtonContext value={OnSquareClick}>
-      <RenderHeader player={player} myColor={myColor}/>
-      <SeatPicker
-        seats={seats}
-        onPick={(color) => socket.emit("pickSeat", color)}
-        onLeave={() => socket.emit("leaveSeat")}
-      />
-      <div className="game-column">
-        {RenderHand("red")}
-        <div className="game">
-          I am turn on turn: {currentMove}
-          <div className="game-board">
-            {currentSquares && (
-              <Board
-                squares={currentSquares}
-                status={status}
-                targets={targets}
-                selectedPiece={selection.piece}
-              />
-            )}
+    <div className="flex-container">
+      <div className="game-window">
+        <div className="game-column">
+          {RenderHand("red")}
+          <div className="game">
+            <div className="game-board">
+              {currentSquares && (
+                <Board
+                  squares={currentSquares}
+                  targets={targets}
+                  selectedPiece={selection.piece}
+                />
+              )}
+            </div>
+            {RenderRematch()}
+            {RenderPass()}
+            {RenderNeutral()}
           </div>
-          {RenderRematch()}
-          {RenderPass()}
-          {RenderNeutral()}
+          {RenderHand("blue")}
         </div>
-        {RenderHand("blue")}
       </div>
+      <div className="side-window">
+        <h1>Play Onitama</h1>
+        <SeatPicker
+          seats={seats}
+          onPick={(color) => socket.emit("pickSeat", color)}
+          onLeave={() => socket.emit("leaveSeat")}
+        />
+      </div>
+    </div>
     </ButtonContext>
   );
 
@@ -287,7 +291,7 @@ export default function App()
     }
     return (
       <div className="neutral-zone">
-        <div className="card-hand-title">Neutral</div>
+        <div className="card-hand-title">{status}</div>
         <CardView card={BY_NAME.get(cardState.neutral)} player={cardState.currentPlayer} />
       </div>
     );
@@ -324,14 +328,13 @@ function HighlightAt(x, y, targets, selectedPiece)
 }
 
 // the board as sent by the server: squares[x][y] holds a piece letter or null
-function Board({ squares, status, targets, selectedPiece})
+function Board({ squares, targets, selectedPiece})
 {
   const size = squares.length;
   const rows = Array.from({ length: size }, (_, y) => y);
   const columns = Array.from({ length: size }, (_, x) => x);
   return (
     <>
-      <div className="status">{status}</div>
       {rows.map((y) => (
         <div className="board-row" key={y}>
           {columns.map((x) => (
