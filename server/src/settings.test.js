@@ -50,13 +50,13 @@ describe("ResolveOverrideDeck", () =>
   it("returns null with a warning for an invalid deck", () =>
   {
     const warn = vi.fn();
-    expect(ResolveOverrideDeck({ overrideDeck: ["horse", "nope", "card-02", "card-03", "card-04"] }, BY_NAME, warn)).toBeNull();
+    expect(ResolveOverrideDeck({ overrideDeck: ["horse", "nope", "ox", "tiger", "crab"] }, BY_NAME, warn)).toBeNull();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("unknown-card"));
   });
 
   it("returns the cards in order for a valid deck", () =>
   {
-    const names = ["horse", "card-01", "card-02", "card-03", "card-04"];
+    const names = ["horse", "ox", "tiger", "crab", "monkey"];
     const deck = ResolveOverrideDeck({ overrideDeck: names }, BY_NAME);
     expect(deck.map((card) => card.name)).toEqual(names);
   });

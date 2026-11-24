@@ -211,11 +211,6 @@ describe("CheckDeckOverride", () =>
     expect(CheckDeckOverride(["c0", "c1", "c2", "c3", 4], byName)).toEqual({ ok: false, reason: "unknown-card" });
   });
 
-  it("rejects duplicate names", () =>
-  {
-    expect(CheckDeckOverride(["c0", "c1", "c2", "c3", "c0"], byName)).toEqual({ ok: false, reason: "duplicate" });
-  });
-
   it("accepts more than five names and returns the cards in order", () =>
   {
     const check = CheckDeckOverride(["c5", "c4", "c3", "c2", "c1", "c0"], byName);

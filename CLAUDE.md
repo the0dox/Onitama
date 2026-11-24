@@ -74,7 +74,7 @@ To play both sides locally, run the server and open the client in two browser ta
 - client → server: `restartGame()` starts a rematch (new board and deck, seats kept). It is ignored for spectators and rejected with `game-not-over` while `winner` is null. The client shows a Rematch button to seated players once there is a winner.
 
 **Shared game logic** (`shared/`, importable by client and server; pure functions, no mutation):
-- `shared/cards.json` — the 16 cards `{ name, suit, moves: [{x, y}] }`. Moves are written from red's perspective; names are unique (currently placeholders `card-01`… plus `horse`).
+- `shared/cards.json` — the 16 cards `{ name, suit, moves: [{x, y}] }`. Moves are written from red's perspective (+y = forward toward blue, +x = right); names are the 16 lowercase base-game names (`tiger`, `dragon`, … `cobra`). Mirrored pairs (frog/rabbit, goose/rooster, horse/ox, eel/cobra) are x-flips of each other.
 - `shared/game/board.js` — `BOARD_SIZE`, `PIECES` (`r`/`R` red disciple/sensei, `b`/`B` blue), `GATES`, `OtherPlayer`, `PieceOwner`, `OnBoard` (integers only), `StartingPiece`, `CreateBoard`. Boards are indexed `board[x][y]`. It also exports the React `ButtonContext`, so it imports `react`.
 - `shared/game/cards.js` — `CARDS` (deep-frozen) and `CardsByName()`.
 - `shared/game/random.js` — `HashSeed()` (FNV-1a string → uint32) and `CreateRng()` (mulberry32), so the `DECK_SEED` string reproduces a shuffle.

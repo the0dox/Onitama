@@ -8,6 +8,7 @@ import { ButtonContext } from "./BoardContext.jsx";
 import { ValidTargets, HasLegalMove } from "../shared/game/moves.js";
 import { EMPTY_SELECTION, ToggleCard, TogglePiece } from "./selection.js";
 import SeatPicker from "./SeatPicker.jsx";
+import WinPopup from "./WinPopup.jsx";
 
 // resolves the card names sent by the server into full card definitions
 const BY_NAME = CardsByName(CARDS);
@@ -176,12 +177,16 @@ export default function App()
                 />
               )}
             </div>
-            {RenderRematch()}
             {RenderPass()}
             {RenderNeutral()}
           </div>
           {RenderHand("blue")}
         </div>
+        <WinPopup
+          winner={winner}
+          canRematch={myColor !== null}
+          onRematch={() => socket.emit("restartGame")}
+        />
       </div>
       <div className="side-window">
         <h1>Play Onitama</h1>
@@ -247,20 +252,6 @@ export default function App()
     setSelection((prev) => ToggleCard(prev, cardName));
   }
 
-  // once the game is won, seated players get a button that asks the server for a new game
-  function RenderRematch()
-  {
-    if (winner === null || myColor === null)
-    {
-      return null;
-    }
-    return (
-      <button className="rematch" onClick={() => socket.emit("restartGame")}>
-        Rematch
-      </button>
-    );
-  }
-
   // with no legal move and a card selected, a button confirms passing with that card
   function RenderPass()
   {
@@ -298,13 +289,13 @@ export default function App()
   }
 }
 
-// the status line: the winner once the game is over, a pass prompt when the viewer has no legal move,
-// otherwise whose turn it is
+// the status line: empty once the game is over (WinPopup announces the winner), a pass prompt when the
+// viewer has no legal move, otherwise whose turn it is
 function StatusText(cardState, winner, mustPass)
 {
   if (winner !== null)
   {
-    return `${winner} wins`;
+    return "";
   }
   if (mustPass)
   {

@@ -30,13 +30,26 @@ describe("cards.json", () =>
     });
   });
 
-  it("defines horse as in the spec", () =>
+  it("defines horse as forward, back or left", () =>
   {
     const horse = CardsByName(CARDS).get("horse");
     expect(horse.suit).toBe("red");
-    expect(horse.moves).toHaveLength(2);
-    expect(horse.moves).toContainEqual({ x: -2, y: 2 });
-    expect(horse.moves).toContainEqual({ x: 2, y: 2 });
+    expect(horse.moves).toHaveLength(3);
+    expect(horse.moves).toContainEqual({ x: 0, y: 1 });
+    expect(horse.moves).toContainEqual({ x: 0, y: -1 });
+    expect(horse.moves).toContainEqual({ x: -1, y: 0 });
+  });
+
+  it("makes each mirrored pair the x-flip of the other", () =>
+  {
+    const byName = CardsByName(CARDS);
+    const pairs = [["frog", "rabbit"], ["goose", "rooster"], ["horse", "ox"], ["eel", "cobra"]];
+    pairs.forEach(([left, right]) =>
+    {
+      const mirrored = byName.get(left).moves.map((move) => ({ x: 0 - move.x, y: move.y }));
+      expect(byName.get(right).moves, `${left}/${right}`).toHaveLength(mirrored.length);
+      mirrored.forEach((move) => expect(byName.get(right).moves, `${left}/${right}`).toContainEqual(move));
+    });
   });
 
   it("is frozen against runtime modification", () =>
